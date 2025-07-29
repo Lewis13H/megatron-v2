@@ -10,11 +10,15 @@
     "rlmonitor:account": "npx ts-node src/monitors/raydium-launchpad/raydium-launchpad-account-monitor.ts",
     "pfmonitor:mint": "npx ts-node src/monitors/pumpfun/pumpfun-monitor-new-token-mint.ts",
     "pfmonitor:account": "npx ts-node src/monitors/pumpfun/pump-fun-account-monitor.ts",
+    "pfmonitor:account:debug": "set DEBUG=true && npx ts-node src/monitors/pumpfun/pump-fun-account-monitor.ts",
     "pfmonitor:transaction": "npx ts-node src/monitors/pumpfun/pump-fun-transaction-monitor.ts",
+    "pfmonitor:bonding": "npx ts-node src/monitors/pumpfun/pump-fun-bonding-curve-monitor.ts",
+    "graduation:monitor": "npx ts-node src/monitors/graduation/graduation-monitor.ts",
     "build": "npx tsc"
   },
   "dependencies": {
     "@coral-xyz/anchor": "^0.30.1",
+    "@raydium-io/raydium-sdk": "^1.3.1-beta.58",
     "@shyft-to/solana-transaction-parser": "^2.0.0",
     "@solana/web3.js": "^1.93.0",
     "@triton-one/yellowstone-grpc": "^4.0.0",

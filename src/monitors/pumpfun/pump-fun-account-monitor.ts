@@ -42,15 +42,19 @@ interface BondingCurveAccount {
   complete?: boolean;
   creator?: string;
   mint?: string;
+  token_mint?: string;
   // Camel case alternatives (just in case)
   virtualSolReserves?: any;
   virtualTokenReserves?: any;
   realSolReserves?: any;
   realTokenReserves?: any;
   tokenTotalSupply?: any;
+  tokenMint?: string;
   // Additional fields
   discriminator?: number[];
   bondingCurve?: string;
+  // Allow any other fields
+  [key: string]: any;
 }
 
 interface AccountInfo {
@@ -208,9 +212,9 @@ export class PumpFunAccountMonitor {
     const tokenTotalSupply = data.token_total_supply || data.tokenTotalSupply;
     
     const solReservesDisplay = this.safeNumberConversion(realSol) / 1e9;
-    const tokenReservesDisplay = this.safeNumberConversion(realToken) / 1e9;
+    const tokenReservesDisplay = this.safeNumberConversion(realToken) / 1e6;  // Pump.fun tokens have 6 decimals
     const virtualSolDisplay = this.safeNumberConversion(virtualSol) / 1e9;
-    const virtualTokenDisplay = this.safeNumberConversion(virtualToken) / 1e9;
+    const virtualTokenDisplay = this.safeNumberConversion(virtualToken) / 1e6;  // Pump.fun tokens have 6 decimals
     
     // Calculate price if reserves are available
     let price = 0;
@@ -220,6 +224,18 @@ export class PumpFunAccountMonitor {
       if (tokenAmount > 0) {
         price = solAmount / tokenAmount;
       }
+    }
+    
+    // Calculate bonding curve progress
+    const RESERVED_TOKENS = 206900000 * 1e6;  // Convert to base units (6 decimals)
+    const INITIAL_REAL_TOKEN_RESERVES = 793100000 * 1e6;  // Convert to base units (6 decimals)
+    let bondingCurveProgress = 0;
+    
+    if (realToken) {
+      const realTokenAmount = this.safeNumberConversion(realToken);
+      const leftTokens = realTokenAmount - RESERVED_TOKENS;
+      bondingCurveProgress = 100 - ((leftTokens * 100) / INITIAL_REAL_TOKEN_RESERVES);
+      bondingCurveProgress = Math.max(0, Math.min(100, bondingCurveProgress)); // Clamp between 0-100
     }
 
 
@@ -232,8 +248,16 @@ export class PumpFunAccountMonitor {
       console.log(`Creator: ${data.creator}`);
     }
     
-    if (data.mint) {
-      console.log(`Mint: ${data.mint}`);
+    // Debug: Check all possible mint field names
+    const mintAddress = data.mint || data.token_mint || data.tokenMint;
+    if (mintAddress) {
+      console.log(`Mint: ${mintAddress}`);
+      console.log(`Pump.fun URL: https://pump.fun/coin/${mintAddress}`);
+    } else {
+      // Pump.fun bonding curves don't store mint in account data
+      // The mint needs to be derived or obtained from monitoring transactions
+      console.log(`Mint: [Derive from transactions or use bonding curve PDA]`);
+      console.log(`Note: Monitor transactions to capture mint addresses`);
     }
     
     console.log("\nReserves:");
@@ -243,13 +267,29 @@ export class PumpFunAccountMonitor {
     console.log(`  Virtual Tokens: ${virtualTokenDisplay.toFixed(2)}`);
     
     if (tokenTotalSupply) {
-      const totalSupplyDisplay = this.safeNumberConversion(tokenTotalSupply) / 1e9;
+      const totalSupplyDisplay = this.safeNumberConversion(tokenTotalSupply) / 1e6;  // Pump.fun tokens have 6 decimals
       console.log(`  Total Supply: ${totalSupplyDisplay.toFixed(2)}`);
     }
     
+    console.log("\nBonding Curve Progress:");
+    console.log(`  Progress: ${bondingCurveProgress.toFixed(2)}%`);
+    console.log(`  Progress Bar: ${this.generateProgressBar(bondingCurveProgress)}`);
+    
+    // Show different message based on progress
+    if (bondingCurveProgress >= 100 || data.complete) {
+      console.log(`  Status: READY FOR GRADUATION 🎓`);
+      if (!data.complete) {
+        console.log(`  Note: Awaiting migration to Raydium`);
+      }
+    } else {
+      const remainingTokens = (realToken ? this.safeNumberConversion(realToken) - RESERVED_TOKENS : INITIAL_REAL_TOKEN_RESERVES) / 1e6;
+      console.log(`  Tokens Remaining: ${remainingTokens.toFixed(2)} (${(100 - bondingCurveProgress).toFixed(2)}% of curve)`);
+    }
+    
     if (price > 0) {
+      const marketCapSol = price * (this.safeNumberConversion(tokenTotalSupply) / 1e6);
       console.log(`\nPrice: ${price.toFixed(9)} SOL per token`);
-      console.log(`Market Cap: ${(price * (this.safeNumberConversion(tokenTotalSupply) / 1e9)).toFixed(4)} SOL`);
+      console.log(`Market Cap: ${marketCapSol.toFixed(4)} SOL`);
     }
     
     console.log(`\nAccount Balance: ${Number(accountInfo.lamports) / 1e9} SOL`);
@@ -287,6 +327,12 @@ export class PumpFunAccountMonitor {
     }
     
     return 0;
+  }
+  
+  private generateProgressBar(progress: number): string {
+    const filled = Math.floor(progress / 5);
+    const empty = 20 - filled;
+    return `[${"█".repeat(filled)}${"-".repeat(empty)}] ${progress.toFixed(1)}%`;
   }
 }
 

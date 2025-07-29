@@ -12,7 +12,6 @@ import Client, {
 import { PublicKey, VersionedTransactionResponse } from "@solana/web3.js";
 import { Idl } from "@coral-xyz/anchor";
 import { SolanaParser } from "@shyft-to/solana-transaction-parser";
-import { SubscribeRequestPing } from "@triton-one/yellowstone-grpc/dist/types/grpc/geyser";
 import { TransactionFormatter } from "./utils/transaction-formatter";
 import { bnLayoutFormatter } from "./utils/bn-layout-formatter";
 import { SolanaEventParser } from "./utils/event-parser";
@@ -29,18 +28,17 @@ interface SubscribeRequest {
   entry: { [key: string]: SubscribeRequestFilterEntry };
   commitment?: CommitmentLevel | undefined;
   accountsDataSlice: SubscribeRequestAccountsDataSlice[];
-  ping?: SubscribeRequestPing | undefined;
+  ping?: any;
 }
 
-interface SwapEvent {
-  type: 'buy' | 'sell';
-  user: string;
-  mint: string;
-  bondingCurve: string;
-  solAmount: number;
-  tokenAmount: number;
-  timestamp: string;
-  signature: string;
+interface BondingCurveState {
+  tokenMint: string;
+  solReserves: number;
+  tokenReserves: number;
+  progress: number;
+  marketCap: number;
+  virtualSolReserves?: number;
+  virtualTokenReserves?: number;
 }
 
 const TXN_FORMATTER = new TransactionFormatter();
@@ -58,10 +56,13 @@ PUMP_FUN_EVENT_PARSER.addParserFromIdl(
   pumpFunIdl as Idl
 );
 
+// Constants for bonding curve calculation
+const RESERVED_TOKENS = 206900000;
+const INITIAL_REAL_TOKEN_RESERVES = 793100000;
+const DECIMALS = 6;
+
 async function handleStream(client: Client, args: SubscribeRequest) {
-  console.log("Starting Pump.fun Transaction Monitor...")
-  console.log("Monitoring for buy/sell events...\n");
-  
+  console.log("Starting Pump.fun Bonding Curve Stream...");
   const stream = await client.subscribe();
 
   // Create `error` / `end` handler
@@ -87,50 +88,13 @@ async function handleStream(client: Client, args: SubscribeRequest) {
         Date.now()
       );
 
-      const parsedTxn = decodePumpFunTransaction(txn);
+      const parsedTxn = decodePumpFun(txn);
       if (!parsedTxn) return;
       
       const swapData = parseSwapTransactionOutput(parsedTxn);
       if (!swapData) return;
       
-      // Format the output
-      const solAmountLamports = swapData.type === 'buy' ? swapData.in_amount : swapData.out_amount;
-      const tokenAmountRaw = swapData.type === 'buy' ? swapData.out_amount : swapData.in_amount;
-      
-      // Handle potential undefined/null values
-      const solAmount = solAmountLamports ? Number(solAmountLamports) / 1e9 : 0;
-      const tokenAmount = tokenAmountRaw ? Number(tokenAmountRaw) / 1e6 : 0; // Assuming 6 decimals for pump.fun tokens
-      
-      const output: SwapEvent = {
-        timestamp: new Date().toISOString(),
-        signature: txn.transaction.signatures[0],
-        type: swapData.type,
-        user: swapData.user,
-        mint: swapData.mint,
-        bondingCurve: swapData.bonding_curve,
-        solAmount: solAmount,
-        tokenAmount: tokenAmount,
-      };
-      
-      console.log(
-        `[${output.type.toUpperCase()}]`,
-        new Date(),
-        "\n",
-        JSON.stringify({
-          ...output,
-          solAmount: `${output.solAmount.toFixed(6)} SOL`,
-          tokenAmount: output.tokenAmount.toLocaleString(undefined, { 
-            minimumFractionDigits: 3,
-            maximumFractionDigits: 3 
-          }),
-          pumpFunUrl: `https://pump.fun/coin/${output.mint}`,
-          solscanUrl: `https://solscan.io/tx/${output.signature}`,
-          shyftUrl: `https://translator.shyft.to/tx/${output.signature}`
-        }, null, 2) + "\n"
-      );
-      console.log(
-        "--------------------------------------------------------------------------------------------------"
-      );
+      processBondingCurveUpdate(swapData, txn);
     }
   });
 
@@ -151,11 +115,66 @@ async function handleStream(client: Client, args: SubscribeRequest) {
   await streamClosed;
 }
 
+function processBondingCurveUpdate(swapData: any, txn: VersionedTransactionResponse) {
+  try {
+    // Extract data from parsed swap
+    const tradeType = swapData.type;
+    const solAmountLamports = tradeType === 'buy' ? swapData.in_amount : swapData.out_amount;
+    const tokenAmountRaw = tradeType === 'buy' ? swapData.out_amount : swapData.in_amount;
+    
+    // Convert amounts
+    const solAmount = solAmountLamports ? Number(solAmountLamports) / 1e9 : 0;
+    const tokenAmount = tokenAmountRaw ? Number(tokenAmountRaw) / 1e6 : 0; // 6 decimals for pump.fun tokens
+    
+    // Calculate transaction impact on bonding curve
+    const transactionImpact = calculateTransactionImpact(tokenAmount);
+    
+    const output = {
+      timestamp: new Date().toISOString(),
+      signature: txn.transaction.signatures[0],
+      tradeType,
+      tokenMint: swapData.mint,
+      bondingCurve: swapData.bonding_curve,
+      user: swapData.user,
+      tokenAmount: tokenAmount.toFixed(6),
+      solAmount: `${solAmount.toFixed(6)} SOL`,
+      transactionImpact: `${transactionImpact.toFixed(4)}% of initial reserves`,
+      note: "Monitor account state for actual bonding curve progress",
+      solscanUrl: `https://solscan.io/tx/${txn.transaction.signatures[0]}`,
+      pumpFunUrl: `https://pump.fun/coin/${swapData.mint}`
+    };
+
+    console.log(
+      new Date(),
+      ":",
+      `Bonding Curve Update - ${tradeType.toUpperCase()}\n`,
+      JSON.stringify(output, null, 2) + "\n"
+    );
+    console.log(
+      "--------------------------------------------------------------------------------------------------"
+    );
+  } catch (err) {
+    // Silent error handling
+  }
+}
+
+function calculateTransactionImpact(tokenAmount: number): number {
+  // Calculate how much this transaction moves the bonding curve
+  // This is the percentage of initial token reserves being traded
+  const impactPercentage = (Math.abs(tokenAmount) / INITIAL_REAL_TOKEN_RESERVES) * 100;
+  return Math.min(impactPercentage, 100);
+}
+
+function generateProgressBar(progress: number): string {
+  const filled = Math.floor(progress / 5);
+  const empty = 20 - filled;
+  return `[${"█".repeat(filled)}${"-".repeat(empty)}] ${progress.toFixed(1)}%`;
+}
+
 async function subscribeCommand(client: Client, args: SubscribeRequest) {
-  console.log("Pump.fun Transaction Monitor");
-  console.log("==========================");
-  console.log("Program ID:", PUMP_FUN_PROGRAM_ID.toBase58());
-  console.log("");
+  console.log("Pump.fun Bonding Curve Progress Monitor");
+  console.log("Monitoring bonding curve transactions...\n");
+  console.log(`Bonding curve completes when all ${INITIAL_REAL_TOKEN_RESERVES.toLocaleString()} tokens are sold\n`);
   
   while (true) {
     try {
@@ -167,37 +186,7 @@ async function subscribeCommand(client: Client, args: SubscribeRequest) {
   }
 }
 
-const client = new Client(
-  process.env.GRPC_URL!,
-  process.env.X_TOKEN!,
-  undefined
-);
-
-const req: SubscribeRequest = {
-  accounts: {},
-  slots: {},
-  transactions: {
-    pumpFun: {
-      vote: false,
-      failed: false,
-      signature: undefined,
-      accountInclude: [PUMP_FUN_PROGRAM_ID.toBase58()],
-      accountExclude: [],
-      accountRequired: [],
-    },
-  },
-  transactionsStatus: {},
-  entry: {},
-  blocks: {},
-  blocksMeta: {},
-  accountsDataSlice: [],
-  ping: undefined,
-  commitment: CommitmentLevel.CONFIRMED,
-};
-
-subscribeCommand(client, req);
-
-function decodePumpFunTransaction(tx: VersionedTransactionResponse) {
+function decodePumpFun(tx: VersionedTransactionResponse) {
   if (tx.meta?.err) return;
   
   try {
@@ -227,7 +216,7 @@ function decodePumpFunTransaction(tx: VersionedTransactionResponse) {
     
     return result;
   } catch (err) {
-    // Silent error handling for unrecognized instructions
+    // Silent error handling
   }
 }
 
@@ -248,3 +237,33 @@ function hydrateLoadedAddresses(tx: VersionedTransactionResponse): VersionedTran
 
   return tx;
 }
+
+const client = new Client(
+  process.env.GRPC_URL!,
+  process.env.X_TOKEN!,
+  undefined
+);
+
+const req: SubscribeRequest = {
+  accounts: {},
+  slots: {},
+  transactions: {
+    PumpFun: {
+      vote: false,
+      failed: false,
+      signature: undefined,
+      accountInclude: [PUMP_FUN_PROGRAM_ID.toBase58()],
+      accountExclude: [],
+      accountRequired: [],
+    },
+  },
+  transactionsStatus: {},
+  entry: {},
+  blocks: {},
+  blocksMeta: {},
+  accountsDataSlice: [],
+  ping: undefined,
+  commitment: CommitmentLevel.CONFIRMED,
+};
+
+subscribeCommand(client, req);
