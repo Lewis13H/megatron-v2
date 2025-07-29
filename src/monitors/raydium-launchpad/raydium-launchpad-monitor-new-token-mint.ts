@@ -14,10 +14,8 @@ import { Idl } from "@coral-xyz/anchor";
 import { SolanaParser } from "@shyft-to/solana-transaction-parser";
 import { SubscribeRequestPing } from "@triton-one/yellowstone-grpc/dist/types/grpc/geyser";
 import { TransactionFormatter } from "./utils/transaction-formatter";
-import { SolanaEventParser } from "./utils/event-parser";
 import { bnLayoutFormatter } from "./utils/bn-layout-formatter";
 import raydiumLaunchpadIdl from "./idls/raydium_launchpad.json";
-import {rl_formatter} from "./utils/rl-transaction-formatter"
 
 interface SubscribeRequest {
   accounts: { [key: string]: SubscribeRequestFilterAccounts };
@@ -38,11 +36,6 @@ const RAYDIUM_LAUNCHPAD_PROGRAM_ID = new PublicKey(
 );
 const RAYDIUM_LAUNCHPAD_IX_PARSER = new SolanaParser([]);
 RAYDIUM_LAUNCHPAD_IX_PARSER.addParserFromIdl(
-  RAYDIUM_LAUNCHPAD_PROGRAM_ID.toBase58(),
-  raydiumLaunchpadIdl as Idl
-);
-const RAYDIUM_LAUNCHPAD_EVENT_PARSER = new SolanaEventParser([], console);
-RAYDIUM_LAUNCHPAD_EVENT_PARSER.addParserFromIdl(
   RAYDIUM_LAUNCHPAD_PROGRAM_ID.toBase58(),
   raydiumLaunchpadIdl as Idl
 );
@@ -75,16 +68,34 @@ async function handleStream(client: Client, args: SubscribeRequest) {
       );
 
       const parsedTxn = decodeRaydiumLaunchpad(txn);
-
       if (!parsedTxn) return;
-      const formatterRLTxn = rl_formatter(parsedTxn,txn);
-       if(!formatterRLTxn) return;
+      
+      // Filter for initialize instructions only
+      const initializeInstruction = parsedTxn.instructions?.find((ix: any) => ix.name === "initialize");
+      if (!initializeInstruction) return;
+      
+      // Extract token information from the initialize instruction
+      const poolState = initializeInstruction.accounts?.find((acc: any) => acc.name === "pool_state")?.pubkey;
+      const baseTokenMint = initializeInstruction.accounts?.find((acc: any) => acc.name === "base_token_mint")?.pubkey;
+      const quoteTokenMint = initializeInstruction.accounts?.find((acc: any) => acc.name === "quote_token_mint")?.pubkey;
+      
+      const output = {
+        timestamp: new Date().toISOString(),
+        signature: txn.transaction.signatures[0],
+        poolState,
+        baseTokenMint,
+        quoteTokenMint: quoteTokenMint?.toString() === 'So11111111111111111111111111111111111111112' ? 'SOL' : quoteTokenMint,
+        initialPrice: (initializeInstruction.args as any)?.initial_price,
+        initialLiquidity: (initializeInstruction.args as any)?.initial_liquidity,
+        solscanUrl: `https://solscan.io/tx/${txn.transaction.signatures[0]}`,
+        shyftUrl: `https://translator.shyft.to/tx/${txn.transaction.signatures[0]}`
+      };
+      
       console.log(
         new Date(),
         ":",
-        `New transaction https://translator.shyft.to/tx/${txn.transaction.signatures[0]} \n`,
-        JSON.stringify(formatterRLTxn, null, 2) + "\n",
-        parsedTxn
+        `New token mint detected\n`,
+        JSON.stringify(output, null, 2) + "\n"
       );
       console.log(
         "--------------------------------------------------------------------------------------------------"
@@ -110,6 +121,9 @@ async function handleStream(client: Client, args: SubscribeRequest) {
 }
 
 async function subscribeCommand(client: Client, args: SubscribeRequest) {
+  console.log("Raydium Launchpad New Token Monitor");
+  console.log("Monitoring for initialize instructions...\n");
+  
   while (true) {
     try {
       await handleStream(client, args);
@@ -155,73 +169,24 @@ function decodeRaydiumLaunchpad(tx: VersionedTransactionResponse) {
   if (tx.meta?.err) return;
 
   try {
-    const paredIxs = RAYDIUM_LAUNCHPAD_IX_PARSER.parseTransactionData(
+    const parsedIxs = RAYDIUM_LAUNCHPAD_IX_PARSER.parseTransactionData(
       tx.transaction.message,
       tx.meta!.loadedAddresses
     );
 
-    const raydiumLaunchpadIxs = paredIxs.filter((ix) =>
-      ix.programId.equals(RAYDIUM_LAUNCHPAD_PROGRAM_ID) ||
-      ix.programId.equals(new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"))
+    const raydiumLaunchpadIxs = parsedIxs.filter((ix) =>
+      ix.programId.equals(RAYDIUM_LAUNCHPAD_PROGRAM_ID)
     );
 
-    const parsedInnerIxs = RAYDIUM_LAUNCHPAD_IX_PARSER.parseTransactionWithInnerInstructions(tx);
-    const raydium_launchpad_inner_ixs = parsedInnerIxs.filter((ix) =>
-      ix.programId.equals(RAYDIUM_LAUNCHPAD_PROGRAM_ID) ||
-      ix.programId.equals(new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"))
-    );
+    if (raydiumLaunchpadIxs.length === 0) return;
 
-    const allInstructions = [...raydiumLaunchpadIxs, ...raydium_launchpad_inner_ixs];
+    const cleanedInstructions = raydiumLaunchpadIxs.filter((ix: any) => ix.name !== "unknown");
 
-    if (allInstructions.length === 0) return;
-
-    const decodeAndCleanUnknownFields = (instructions: any[]) => {
-      return instructions
-        .filter((ix: any) => ix.name !== "unknown") 
-        .map((ix: any) => {
-          if (ix.args?.unknown) {
-            const buffer = Buffer.from(ix.args.unknown, 'base64');
-            const schema = raydiumLaunchpadIdl.instructions.find(
-              (instruction: any) => instruction.name === ix.name
-            );
-
-            if (!schema) {
-              console.warn(`No schema found for instruction: ${ix.name}`);
-            } else {
-              console.log(`Schema for instruction ${ix.name}:`, schema);
-
-              try {
-                const someValue = buffer.readUInt32LE(0); 
-                console.log(`Manually decoded value: ${someValue}`);
-                ix.args.decodedUnknown = { someValue }; 
-              } catch (err) {
-                console.error(`Failed to manually decode unknown field:`, err);
-              }
-            }
-
-            delete ix.args.unknown;
-          }
-
-          if (ix.innerInstructions) {
-            ix.innerInstructions = decodeAndCleanUnknownFields(ix.innerInstructions);
-          }
-
-          return ix;
-        });
-    };
-
-    const cleanedInstructions = decodeAndCleanUnknownFields(raydiumLaunchpadIxs);
-    const cleanedInnerInstructions = decodeAndCleanUnknownFields(raydium_launchpad_inner_ixs);
-
-    const events = RAYDIUM_LAUNCHPAD_EVENT_PARSER.parseEvent(tx);
-
-    const result = events.length > 0
-      ? { instructions: cleanedInstructions, inner_ixs: cleanedInnerInstructions, events }
-      : { instructions: cleanedInstructions, inner_ixs: cleanedInnerInstructions };
-
+    const result = { instructions: cleanedInstructions };
     bnLayoutFormatter(result);
 
     return result;
   } catch (err) {
+    // Silent error handling
   }
 }
