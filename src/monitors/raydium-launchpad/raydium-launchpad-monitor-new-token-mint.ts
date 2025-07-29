@@ -17,18 +17,7 @@ import { TransactionFormatter } from "./utils/transaction-formatter";
 import { SolanaEventParser } from "./utils/event-parser";
 import { bnLayoutFormatter } from "./utils/bn-layout-formatter";
 import raydiumLaunchpadIdl from "./idls/raydium_launchpad.json";
-
-// Suppress parser warnings for known programs early
-const originalConsoleWarn = console.warn;
-console.warn = (...args: any[]) => {
-  const firstArg = args[0];
-  if (typeof firstArg === 'string' && 
-      (firstArg.includes('Parser does not matching') || 
-       firstArg.includes('ComputeBudget'))) {
-    return; // Suppress parser warnings for ComputeBudget and other unrecognized programs
-  }
-  originalConsoleWarn.apply(console, args);
-};
+import {rl_formatter} from "./utils/rl-transaction-formatter"
 
 interface SubscribeRequest {
   accounts: { [key: string]: SubscribeRequestFilterAccounts };
@@ -47,7 +36,6 @@ const TXN_FORMATTER = new TransactionFormatter();
 const RAYDIUM_LAUNCHPAD_PROGRAM_ID = new PublicKey(
   "LanMV9sAd7wArD4vJFi2qDdfnVhFxYSUg6eADduJ3uj"
 );
-
 const RAYDIUM_LAUNCHPAD_IX_PARSER = new SolanaParser([]);
 RAYDIUM_LAUNCHPAD_IX_PARSER.addParserFromIdl(
   RAYDIUM_LAUNCHPAD_PROGRAM_ID.toBase58(),
@@ -87,54 +75,20 @@ async function handleStream(client: Client, args: SubscribeRequest) {
       );
 
       const parsedTxn = decodeRaydiumLaunchpad(txn);
-      if (!parsedTxn) return;
-      
-      totalTransactions++;
-      
-      // Look for initialize instruction in any position
-      const allInstructions = [...(parsedTxn.instructions || []), ...(parsedTxn.inner_ixs || [])];
-      const initInstruction = allInstructions.find((ix: any) => ix.name === "initialize");
-      
-      if (!initInstruction) {
-        return; // Silently skip non-initialize transactions
-      }
-      
-      initializeCount++;
-      lastStatusTime = Date.now();
-      console.log(`\n[INFO] Found initialize instruction in transaction ${txn.transaction.signatures[0]}`);
-      
 
-      // Extract all relevant information
-      const poolState = initInstruction.accounts?.find((acc: any) => acc.name === "pool_state")?.pubkey;
-      const baseTokenMint = initInstruction.accounts?.find((acc: any) => acc.name === "base_token_mint")?.pubkey;
-      const quoteTokenMint = initInstruction.accounts?.find((acc: any) => acc.name === "quote_token_mint")?.pubkey;
-      const baseVault = initInstruction.accounts?.find((acc: any) => acc.name === "base_vault")?.pubkey;
-      const quoteVault = initInstruction.accounts?.find((acc: any) => acc.name === "quote_vault")?.pubkey;
-      
-      // Look for mint initialization in inner instructions if base token mint is new
-      const mintInitIx = parsedTxn.inner_ixs?.find((ix: any) => 
-        ix.name === "initializeMint2" || ix.name === "initializeMint"
+      if (!parsedTxn) return;
+      const formatterRLTxn = rl_formatter(parsedTxn,txn);
+       if(!formatterRLTxn) return;
+      console.log(
+        new Date(),
+        ":",
+        `New transaction https://translator.shyft.to/tx/${txn.transaction.signatures[0]} \n`,
+        JSON.stringify(formatterRLTxn, null, 2) + "\n",
+        parsedTxn
       );
-      
-      const tokenMint = mintInitIx?.accounts?.find((acc: any) => acc.name === "mint")?.pubkey || baseTokenMint;
-      
-      console.log("\n🚀 NEW TOKEN LAUNCH ON RAYDIUM LAUNCHPAD");
-      console.log("==========================================");
-      console.log(`Time: ${new Date().toISOString()}`);
-      console.log(`Transaction: https://solscan.io/tx/${txn.transaction.signatures[0]}`);
-      console.log(`Token Mint: ${tokenMint || 'N/A'}`);
-      console.log(`Pool State: ${poolState || 'N/A'}`);
-      console.log(`Quote Token: ${quoteTokenMint === 'So11111111111111111111111111111111111111112' ? 'SOL' : quoteTokenMint || 'N/A'}`);
-      console.log(`Base Vault: ${baseVault || 'N/A'}`);
-      console.log(`Quote Vault: ${quoteVault || 'N/A'}`);
-      
-      // Extract initialization parameters if available
-      if (initInstruction.args) {
-        console.log(`Initial Price: ${initInstruction.args.initial_price || 'N/A'}`);
-        console.log(`Liquidity: ${initInstruction.args.initial_liquidity || 'N/A'}`);
-      }
-      
-      console.log("==========================================\n");
+      console.log(
+        "--------------------------------------------------------------------------------------------------"
+      );
     }
   });
 
@@ -155,32 +109,7 @@ async function handleStream(client: Client, args: SubscribeRequest) {
   await streamClosed;
 }
 
-// Track statistics
-let totalTransactions = 0;
-let initializeCount = 0;
-let lastStatusTime = Date.now();
-
 async function subscribeCommand(client: Client, args: SubscribeRequest) {
-  console.log("Starting Raydium Launchpad New Token Monitor...");
-  console.log("Monitoring for new token launches (initialize instructions)");
-  console.log("Note: New token launches are rare - expect 1-2 per few minutes");
-  console.log("Press Ctrl+C to stop monitoring.\n");
-  
-  // Handle graceful shutdown
-  process.on('SIGINT', () => {
-    console.log('\n\nFinal Statistics:');
-    console.log(`Total transactions monitored: ${totalTransactions}`);
-    console.log(`New token launches found: ${initializeCount}`);
-    console.log('Shutting down monitor...');
-    process.exit(0);
-  });
-
-  // Show periodic status updates
-  setInterval(() => {
-    const elapsed = Math.floor((Date.now() - lastStatusTime) / 1000);
-    console.log(`[STATUS] Monitoring... ${totalTransactions} transactions checked, ${initializeCount} new tokens found (${elapsed}s elapsed)`);
-  }, 30000); // Every 30 seconds
-
   while (true) {
     try {
       await handleStream(client, args);
@@ -189,13 +118,6 @@ async function subscribeCommand(client: Client, args: SubscribeRequest) {
       await new Promise((resolve) => setTimeout(resolve, 1000));
     }
   }
-}
-
-// Check environment variables
-if (!process.env.GRPC_URL || !process.env.X_TOKEN) {
-  console.error("Missing required environment variables: GRPC_URL or X_TOKEN");
-  console.error("Please ensure .env file is properly configured");
-  process.exit(1);
 }
 
 const client = new Client(
@@ -232,13 +154,7 @@ subscribeCommand(client, req);
 function decodeRaydiumLaunchpad(tx: VersionedTransactionResponse) {
   if (tx.meta?.err) return;
 
-  // Store original console.warn at function scope
-  const originalWarn = console.warn;
-
   try {
-    // Temporarily suppress warnings during parsing
-    console.warn = () => {};
-    
     const paredIxs = RAYDIUM_LAUNCHPAD_IX_PARSER.parseTransactionData(
       tx.transaction.message,
       tx.meta!.loadedAddresses
@@ -250,9 +166,6 @@ function decodeRaydiumLaunchpad(tx: VersionedTransactionResponse) {
     );
 
     const parsedInnerIxs = RAYDIUM_LAUNCHPAD_IX_PARSER.parseTransactionWithInnerInstructions(tx);
-    
-    // Restore console.warn after parsing
-    console.warn = originalWarn;
     const raydium_launchpad_inner_ixs = parsedInnerIxs.filter((ix) =>
       ix.programId.equals(RAYDIUM_LAUNCHPAD_PROGRAM_ID) ||
       ix.programId.equals(new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"))
@@ -267,11 +180,32 @@ function decodeRaydiumLaunchpad(tx: VersionedTransactionResponse) {
         .filter((ix: any) => ix.name !== "unknown") 
         .map((ix: any) => {
           if (ix.args?.unknown) {
+            const buffer = Buffer.from(ix.args.unknown, 'base64');
+            const schema = raydiumLaunchpadIdl.instructions.find(
+              (instruction: any) => instruction.name === ix.name
+            );
+
+            if (!schema) {
+              console.warn(`No schema found for instruction: ${ix.name}`);
+            } else {
+              console.log(`Schema for instruction ${ix.name}:`, schema);
+
+              try {
+                const someValue = buffer.readUInt32LE(0); 
+                console.log(`Manually decoded value: ${someValue}`);
+                ix.args.decodedUnknown = { someValue }; 
+              } catch (err) {
+                console.error(`Failed to manually decode unknown field:`, err);
+              }
+            }
+
             delete ix.args.unknown;
           }
+
           if (ix.innerInstructions) {
             ix.innerInstructions = decodeAndCleanUnknownFields(ix.innerInstructions);
           }
+
           return ix;
         });
     };
@@ -286,13 +220,8 @@ function decodeRaydiumLaunchpad(tx: VersionedTransactionResponse) {
       : { instructions: cleanedInstructions, inner_ixs: cleanedInnerInstructions };
 
     bnLayoutFormatter(result);
-    
-    // Restore console.warn
-    console.warn = originalWarn;
 
     return result;
   } catch (err) {
-    // Restore console.warn on error
-    console.warn = originalWarn;
   }
 }

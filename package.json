@@ -5,9 +5,10 @@
   "main": "raydium-launchpad-monitor-new-token-mint.ts",
   "type": "commonjs",
   "scripts": {
-    "start": "npx ts-node src/monitors/raydium-launchpad/raydium-launchpad-monitor-new-token-mint.ts",
-    "monitor:tx": "npx ts-node src/monitors/raydium-launchpad/raydium-launchpad-transaction-monitor.ts",
-    "monitor:account": "npx ts-node src/monitors/raydium-launchpad/raydium-launchpad-account-monitor.ts",
+    "rlmonitor:mint": "npx ts-node src/monitors/raydium-launchpad/raydium-launchpad-monitor-new-token-mint.ts",
+    "rlmonitor:trans": "npx ts-node src/monitors/raydium-launchpad/raydium-launchpad-transaction-monitor.ts",
+    "rlmonitor:account": "npx ts-node src/monitors/raydium-launchpad/raydium-launchpad-account-monitor.ts",
+    "pfmonitor:mint": "npx ts-node src/monitors/pumpfun/pumpfun-monitor-new-token-mint.ts",
     "build": "npx tsc"
   },
   "dependencies": {
@@ -15,7 +16,9 @@
     "@shyft-to/solana-transaction-parser": "^2.0.0",
     "@solana/web3.js": "^1.93.0",
     "@triton-one/yellowstone-grpc": "^4.0.0",
+    "@types/bs58": "^4.0.4",
     "@types/lodash": "^4.17.20",
+    "bs58": "^6.0.0",
     "dotenv": "^16.4.7",
     "lodash": "^4.17.21"
   },
