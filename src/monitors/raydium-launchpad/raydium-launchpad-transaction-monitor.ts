@@ -17,6 +17,7 @@ import { TransactionFormatter } from "./utils/transaction-formatter";
 import { SolanaEventParser } from "./utils/event-parser";
 import { bnLayoutFormatter } from "./utils/bn-layout-formatter";
 import raydiumLaunchpadIdl from "./idls/raydium_launchpad.json";
+import { getDbPool, PoolOperations, PoolData } from "../../database";
 
 interface SubscribeRequest {
   accounts: { [key: string]: SubscribeRequestFilterAccounts };
@@ -78,6 +79,9 @@ RAYDIUM_LAUNCHPAD_EVENT_PARSER.addParserFromIdl(
   raydiumLaunchpadIdl as Idl
 );
 
+// Initialize database operations
+const dbPool = getDbPool();
+const poolOperations = new PoolOperations(dbPool);
 
 async function handleStream(client: Client, args: SubscribeRequest) {
   console.log("🚀 Starting Comprehensive Raydium Launchpad Transaction Monitor...")
@@ -109,7 +113,7 @@ async function handleStream(client: Client, args: SubscribeRequest) {
 
         const parsedTxn = await parseRaydiumLaunchpadTransaction(txn);
         if (parsedTxn) {
-          displayParsedTransaction(parsedTxn);
+          await displayParsedTransaction(parsedTxn);
         }
       } catch (error) {
         console.error("Error processing transaction:", error);
@@ -331,7 +335,7 @@ function cleanInstructions(instructions: any[]): any[] {
     });
 }
 
-function displayParsedTransaction(parsedTx: ParsedTransaction) {
+async function displayParsedTransaction(parsedTx: ParsedTransaction) {
   const typeEmoji = {
     [TransactionType.POOL_CREATION]: "🌟",
     [TransactionType.BUY]: "🟢",
@@ -387,6 +391,31 @@ ${parsedTx.events.map(evt => `  - ${evt.name || 'Event'}`).join('\n')}` : ''}
 🔗 Explorer: https://solscan.io/tx/${parsedTx.signature}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 `);
+
+  // Save pool creation to database
+  if (parsedTx.type === TransactionType.POOL_CREATION && parsedTx.data.poolId && parsedTx.data.baseMint) {
+    try {
+      const poolData: PoolData = {
+        pool_address: parsedTx.data.poolId,
+        base_mint: parsedTx.data.baseMint,
+        quote_mint: parsedTx.data.quoteMint || 'So11111111111111111111111111111111111111112', // Default to WSOL
+        platform: 'raydium_launchpad',
+        lp_mint: parsedTx.data.lpMint,
+        base_vault: parsedTx.data.baseVault,
+        quote_vault: parsedTx.data.quoteVault,
+        // Initial liquidity will be populated from first transaction or account update
+      };
+
+      await poolOperations.insertPoolWithToken(poolData, parsedTx.data.baseMint);
+      console.log(`💾 Pool saved to database: ${parsedTx.data.poolId}`);
+    } catch (error: any) {
+      if (error.message?.includes('Token not found')) {
+        console.log(`⏳ Token ${parsedTx.data.baseMint} not yet in database. Pool creation will be retried when token is added.`);
+      } else {
+        console.error(`❌ Failed to save pool to database:`, error.message);
+      }
+    }
+  }
 }
 
 async function subscribeCommand(client: Client, args: SubscribeRequest) {

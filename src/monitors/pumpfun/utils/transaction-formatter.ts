@@ -155,3 +155,9 @@ export class TransactionFormatter {
     };
   }
 }
+
+// Export a helper function for easy use
+export function formatTransaction(data: any): VersionedTransactionResponse {
+  const formatter = new TransactionFormatter();
+  return formatter.formTransactionFromJson(data, Date.now() / 1000);
+}

@@ -16,6 +16,7 @@ import bs58 from 'bs58';
 
 // Import utility function
 import { bnLayoutFormatter } from "./utils/bn-layout-formatter";
+import { getDbPool, PoolOperations, PoolData } from "../../database";
 
 const PUMP_FUN_PROGRAM_ID = '6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P';
 
@@ -70,6 +71,7 @@ interface AccountInfo {
 export class PumpFunAccountMonitor {
   private client: Client;
   private accountCoder: BorshAccountsCoder;
+  private poolOperations: PoolOperations;
 
   constructor() {
     this.client = new Client(
@@ -79,8 +81,12 @@ export class PumpFunAccountMonitor {
     );
     
     // Load the Pump.fun IDL
-    const idl = JSON.parse(fs.readFileSync('./idls/pump_0.1.0.json', 'utf8'));
+    const idl = JSON.parse(fs.readFileSync(__dirname + '/idls/pump_0.1.0.json', 'utf8'));
     this.accountCoder = new BorshAccountsCoder(idl);
+    
+    // Initialize database operations
+    const dbPool = getDbPool();
+    this.poolOperations = new PoolOperations(dbPool);
   }
 
   async start() {
@@ -303,6 +309,46 @@ export class PumpFunAccountMonitor {
     // Log detailed data for debugging
     if (process.env.DEBUG === 'true') {
       console.dir(accountInfo, { depth: null });
+    }
+    
+    // Update pool in database if we have a mint address
+    if (mintAddress) {
+      this.updatePoolInDatabase(accountInfo.pubkey, mintAddress, {
+        virtualSol: virtualSol,
+        virtualToken: virtualToken,
+        realSol: realSol,
+        realToken: realToken,
+        progress: bondingCurveProgress,
+        complete: data.complete || false
+      });
+    }
+  }
+  
+  private async updatePoolInDatabase(bondingCurveAddress: string, mintAddress: string, data: {
+    virtualSol: any;
+    virtualToken: any;  
+    realSol: any;
+    realToken: any;
+    progress: number;
+    complete: boolean;
+  }) {
+    try {
+      await this.poolOperations.updatePoolReserves(bondingCurveAddress, {
+        virtual_sol_reserves: data.virtualSol?.toString(),
+        virtual_token_reserves: data.virtualToken?.toString(),
+        real_sol_reserves: data.realSol?.toString(),
+        real_token_reserves: data.realToken?.toString(),
+        bonding_curve_progress: data.progress
+      });
+      
+      // Update status if completed
+      if (data.complete) {
+        await this.poolOperations.updatePoolStatus(bondingCurveAddress, 'graduated');
+      }
+      
+      console.log(`💾 Pool reserves updated in database for ${bondingCurveAddress}`);
+    } catch (error) {
+      console.error(`❌ Failed to update pool in database:`, error);
     }
   }
 

@@ -13,8 +13,13 @@ import { Connection, PublicKey, VersionedTransactionResponse } from "@solana/web
 import { tOutPut } from "./utils/transactionOutput";
 import { publicKey } from "@solana/buffer-layout-utils";
 import { savePumpfunToken } from "../../database/monitor-integration";
+import { getDbPool, PoolOperations, PoolData } from "../../database";
 
 const pumpfun = 'TSLvdd1pWpHVjahSpsvCXUbgwsL3JAcvokwaKt1eokM';
+
+// Initialize database operations
+const dbPool = getDbPool();
+const poolOperations = new PoolOperations(dbPool);
 
 interface SubscribeRequest {
   accounts: { [key: string]: SubscribeRequestFilterAccounts };

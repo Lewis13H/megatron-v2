@@ -31,7 +31,21 @@
       "WebFetch(domain:letsbonk.fun)",
       "Bash(git reset:*)",
       "Bash(git checkout:*)",
-      "Bash(npm run:*)"
+      "Bash(npm run:*)",
+      "Bash(npx tsc:*)",
+      "WebFetch(domain:translator.shyft.to)",
+      "WebFetch(domain:solscan.io)",
+      "Bash(npm run:*)",
+      "Bash(rm:*)",
+      "WebFetch(domain:www.helius.dev)",
+      "Bash(psql:*)",
+      "Bash(PGPASSWORD=password123 psql -h localhost -p 5433 -U postgres -d megatron_v2 -f src/database/migrations/002_create_pools.sql)",
+      "Bash(PGPASSWORD=password123 psql -h localhost -p 5433 -U postgres -d megatron_v2 -c \"\\dt pools\")",
+      "Bash(PGPASSWORD=password123 psql -h localhost -p 5433 -U postgres -d megatron_v2 -c \"\\d pools\")",
+      "Bash(PGPASSWORD=password123 psql -h localhost -p 5433 -U postgres -d megatron_v2 -c \"\\di idx_pools*\")",
+      "Bash(timeout 30 npm run rlmonitor:trans)",
+      "Bash(PGPASSWORD=password123 psql -h localhost -p 5433 -U postgres -d megatron_v2 -f src/database/test-session2-complete.sql)",
+      "Bash(timeout 5 npm run pfmonitor:account)"
     ],
     "deny": []
   }
