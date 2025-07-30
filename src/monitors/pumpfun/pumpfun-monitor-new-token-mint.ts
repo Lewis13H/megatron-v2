@@ -12,6 +12,7 @@ import Client, {
 import { Connection, PublicKey, VersionedTransactionResponse } from "@solana/web3.js";
 import { tOutPut } from "./utils/transactionOutput";
 import { publicKey } from "@solana/buffer-layout-utils";
+import { savePumpfunToken } from "../../database/monitor-integration";
 
 const pumpfun = 'TSLvdd1pWpHVjahSpsvCXUbgwsL3JAcvokwaKt1eokM';
 
@@ -54,13 +55,29 @@ interface SubscribeRequest {
 
      const result = await tOutPut(data);
 
-     const Ca = result.meta.postTokenBalances[0].mint
+     const Ca = result.meta.postTokenBalances[0].mint;
+     const signature = result.signature; // signature is at top level
    
     console.log(`
       NEWLY MINTED
       Ca : ${Ca}
+      Signature: ${signature}
+      Timestamp: ${new Date().toISOString()}
     
-   `)
+   `);
+   
+   // Save to database
+   const tokenData = {
+     Ca: Ca,
+     mint: Ca,
+     signature: signature,
+     timestamp: new Date().toISOString(),
+     creator: result.message.accountKeys[0] // First signer is usually creator
+   };
+   
+   savePumpfunToken(tokenData).catch(error => {
+     console.error("Failed to save Pump.fun token to database:", error);
+   });
    
  
 }catch(error){

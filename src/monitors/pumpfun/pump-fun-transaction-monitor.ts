@@ -18,6 +18,7 @@ import { bnLayoutFormatter } from "./utils/bn-layout-formatter";
 import { SolanaEventParser } from "./utils/event-parser";
 import { parseSwapTransactionOutput } from "./utils/pump-fun-parsed-transaction";
 import pumpFunIdl from "./idls/pump_0.1.0.json";
+import { savePumpfunToken } from "../../database/monitor-integration";
 
 interface SubscribeRequest {
   accounts: { [key: string]: SubscribeRequestFilterAccounts };
@@ -128,6 +129,12 @@ async function handleStream(client: Client, args: SubscribeRequest) {
           shyftUrl: `https://translator.shyft.to/tx/${output.signature}`
         }, null, 2) + "\n"
       );
+      
+      // Note: This monitor tracks all transactions, not just creation
+      // For new token detection, use pumpfun-monitor-new-token-mint.ts
+      // We could save first transaction per token, but that would require
+      // checking if token already exists in DB
+      
       console.log(
         "--------------------------------------------------------------------------------------------------"
       );

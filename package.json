@@ -14,7 +14,10 @@
     "pfmonitor:transaction": "npx ts-node src/monitors/pumpfun/pump-fun-transaction-monitor.ts",
     "pfmonitor:bonding": "npx ts-node src/monitors/pumpfun/pump-fun-bonding-curve-monitor.ts",
     "graduation:monitor": "npx ts-node src/monitors/graduation/graduation-monitor.ts",
-    "build": "npx tsc"
+    "build": "npx tsc",
+    "db:setup": "npx ts-node src/database/setup/setup-database.ts",
+    "db:validate": "npx ts-node src/database/scripts/validate-tokens.ts",
+    "check-tx": "npx ts-node src/database/check-transaction.ts"
   },
   "dependencies": {
     "@coral-xyz/anchor": "^0.30.1",
@@ -26,11 +29,13 @@
     "@types/lodash": "^4.17.20",
     "bs58": "^6.0.0",
     "dotenv": "^16.4.7",
-    "lodash": "^4.17.21"
+    "lodash": "^4.17.21",
+    "pg": "^8.11.3"
   },
   "devDependencies": {
     "@types/bn.js": "^5.2.0",
     "@types/node": "^20.10.0",
+    "@types/pg": "^8.10.9",
     "ts-node": "^10.9.2",
     "typescript": "^5.4.5"
   }

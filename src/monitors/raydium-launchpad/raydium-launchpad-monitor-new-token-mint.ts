@@ -16,6 +16,7 @@ import { SubscribeRequestPing } from "@triton-one/yellowstone-grpc/dist/types/gr
 import { TransactionFormatter } from "./utils/transaction-formatter";
 import { bnLayoutFormatter } from "./utils/bn-layout-formatter";
 import raydiumLaunchpadIdl from "./idls/raydium_launchpad.json";
+import { saveRaydiumToken } from "../../database/monitor-integration";
 
 interface SubscribeRequest {
   accounts: { [key: string]: SubscribeRequestFilterAccounts };
@@ -74,19 +75,33 @@ async function handleStream(client: Client, args: SubscribeRequest) {
       const initializeInstruction = parsedTxn.instructions?.find((ix: any) => ix.name === "initialize");
       if (!initializeInstruction) return;
       
+      // Debug: Log the full instruction to understand structure
+      console.log("Initialize instruction accounts:", initializeInstruction.accounts?.map((acc: any) => ({
+        name: acc.name,
+        pubkey: acc.pubkey
+      })));
+      
       // Extract token information from the initialize instruction
       const poolState = initializeInstruction.accounts?.find((acc: any) => acc.name === "pool_state")?.pubkey;
-      const baseTokenMint = initializeInstruction.accounts?.find((acc: any) => acc.name === "base_token_mint")?.pubkey;
-      const quoteTokenMint = initializeInstruction.accounts?.find((acc: any) => acc.name === "quote_token_mint")?.pubkey;
+      const baseTokenMint = initializeInstruction.accounts?.find((acc: any) => acc.name === "base_mint")?.pubkey;
+      const quoteTokenMint = initializeInstruction.accounts?.find((acc: any) => acc.name === "quote_mint")?.pubkey;
+      const creator = initializeInstruction.accounts?.find((acc: any) => acc.name === "creator")?.pubkey;
+      
+      // Skip if we don't have the required token mint
+      if (!baseTokenMint) {
+        console.log("Warning: baseTokenMint not found in instruction accounts");
+        return;
+      }
       
       const output = {
         timestamp: new Date().toISOString(),
         signature: txn.transaction.signatures[0],
-        poolState,
-        baseTokenMint,
-        quoteTokenMint: quoteTokenMint?.toString() === 'So11111111111111111111111111111111111111112' ? 'SOL' : quoteTokenMint,
+        poolState: poolState?.toString(),
+        baseTokenMint: baseTokenMint?.toString(),
+        quoteTokenMint: quoteTokenMint?.toString() === 'So11111111111111111111111111111111111111112' ? 'SOL' : quoteTokenMint?.toString(),
         initialPrice: (initializeInstruction.args as any)?.initial_price,
         initialLiquidity: (initializeInstruction.args as any)?.initial_liquidity,
+        creator: creator?.toString() || 'unknown',
         solscanUrl: `https://solscan.io/tx/${txn.transaction.signatures[0]}`,
         shyftUrl: `https://translator.shyft.to/tx/${txn.transaction.signatures[0]}`
       };
@@ -97,6 +112,12 @@ async function handleStream(client: Client, args: SubscribeRequest) {
         `New token mint detected\n`,
         JSON.stringify(output, null, 2) + "\n"
       );
+      
+      // Save to database
+      saveRaydiumToken(output).catch(error => {
+        console.error("Failed to save token to database:", error);
+      });
+      
       console.log(
         "--------------------------------------------------------------------------------------------------"
       );
