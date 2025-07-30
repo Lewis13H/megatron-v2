@@ -149,11 +149,19 @@ export async function savePumpfunToken(monitorOutput: any) {
       symbol: monitorOutput.symbol,
       name: monitorOutput.name,
       creator: monitorOutput.creator || monitorOutput.user || 'unknown',
-      bondingCurve: monitorOutput.bondingCurve || monitorOutput.bonding_curve,
+      bondingCurve: monitorOutput.bondingCurve || monitorOutput.bonding_curve || monitorOutput.metadata?.bondingCurve,
       virtualSolReserves: monitorOutput.virtualSolReserves,
       virtualTokenReserves: monitorOutput.virtualTokenReserves,
       realSolReserves: monitorOutput.realSolReserves,
-      realTokenReserves: monitorOutput.realTokenReserves
+      realTokenReserves: monitorOutput.realTokenReserves,
+      // Extract all the additional fields from metadata if present
+      uri: monitorOutput.uri || monitorOutput.metadata?.uri,
+      mintAuthority: monitorOutput.mintAuthority || monitorOutput.metadata?.mintAuthority,
+      associatedBondingCurve: monitorOutput.associatedBondingCurve || monitorOutput.metadata?.associatedBondingCurve,
+      global: monitorOutput.global || monitorOutput.metadata?.global,
+      mplTokenMetadata: monitorOutput.mplTokenMetadata || monitorOutput.metadata?.mplTokenMetadata,
+      metadataAccount: monitorOutput.metadata?.metadataAccount || monitorOutput.metadata?.metadata,
+      slot: monitorOutput.slot || monitorOutput.metadata?.slot
     };
     
     const tokenData: TokenData = {

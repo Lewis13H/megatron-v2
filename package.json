@@ -9,7 +9,6 @@
     "rlmonitor:trans": "npx ts-node src/monitors/raydium-launchpad/raydium-launchpad-transaction-monitor.ts",
     "rlmonitor:account": "npx ts-node src/monitors/raydium-launchpad/raydium-launchpad-account-monitor.ts",
     "pfmonitor:mint": "npx ts-node src/monitors/pumpfun/pumpfun-monitor-new-token-mint.ts",
-    "pfmonitor:mint-v2": "npx ts-node src/monitors/pumpfun/pumpfun-monitor-new-token-mint-v2.ts",
     "pfmonitor:account": "npx ts-node src/monitors/pumpfun/pump-fun-account-monitor.ts",
     "pfmonitor:account:debug": "set DEBUG=true && npx ts-node src/monitors/pumpfun/pump-fun-account-monitor.ts",
     "pfmonitor:transaction": "npx ts-node src/monitors/pumpfun/pump-fun-transaction-monitor.ts",

@@ -9,17 +9,16 @@ import Client, {
   SubscribeRequestFilterSlots,
   SubscribeRequestFilterTransactions,
 } from "@triton-one/yellowstone-grpc";
-import { Connection, PublicKey, VersionedTransactionResponse } from "@solana/web3.js";
-import { tOutPut } from "./utils/transactionOutput";
-import { publicKey } from "@solana/buffer-layout-utils";
+import { PublicKey, VersionedTransactionResponse } from "@solana/web3.js";
+import { Idl } from "@coral-xyz/anchor";
+import { SolanaParser } from "@shyft-to/solana-transaction-parser";
+import { SubscribeRequestPing } from "@triton-one/yellowstone-grpc/dist/types/grpc/geyser";
+import { TransactionFormatter } from "./utils/transaction-formatter";
+import { bnLayoutFormatter } from "./utils/bn-layout-formatter";
+import { SolanaEventParser } from "./utils/event-parser";
+import pumpFunIdl from "./idls/pump_0.1.0.json";
 import { savePumpfunToken } from "../../database/monitor-integration";
-import { getDbPool, PoolOperations, PoolData } from "../../database";
-
-const pumpfun = 'TSLvdd1pWpHVjahSpsvCXUbgwsL3JAcvokwaKt1eokM';
-
-// Initialize database operations
-const dbPool = getDbPool();
-const poolOperations = new PoolOperations(dbPool);
+import { getDbPool, PoolOperations } from "../../database";
 
 interface SubscribeRequest {
   accounts: { [key: string]: SubscribeRequestFilterAccounts };
@@ -31,13 +30,50 @@ interface SubscribeRequest {
   entry: { [key: string]: SubscribeRequestFilterEntry };
   commitment?: CommitmentLevel | undefined;
   accountsDataSlice: SubscribeRequestAccountsDataSlice[];
-  ping?: any;
+  ping?: SubscribeRequestPing | undefined;
 }
 
-  async function handleStream(client: Client, args: SubscribeRequest) {
-  // Subscribe for events
+interface CreateTokenData {
+  name: string;
+  symbol: string;
+  uri: string;
+  mint: string;
+  mintAuthority: string;
+  bondingCurve: string;
+  associatedBondingCurve: string;
+  global: string;
+  mplTokenMetadata: string;
+  metadata: string;
+  user: string;
+  timestamp: string;
+  signature: string;
+  slot?: number;
+}
+
+const TXN_FORMATTER = new TransactionFormatter();
+const PUMP_FUN_PROGRAM_ID = new PublicKey(
+  "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
+);
+const PUMP_FUN_IX_PARSER = new SolanaParser([]);
+PUMP_FUN_IX_PARSER.addParserFromIdl(
+  PUMP_FUN_PROGRAM_ID.toBase58(),
+  pumpFunIdl as Idl
+);
+const PUMP_FUN_EVENT_PARSER = new SolanaEventParser([], console);
+PUMP_FUN_EVENT_PARSER.addParserFromIdl(
+  PUMP_FUN_PROGRAM_ID.toBase58(),
+  pumpFunIdl as Idl
+);
+
+// Initialize database operations
+const dbPool = getDbPool();
+const poolOperations = new PoolOperations(dbPool);
+
+async function handleStream(client: Client, args: SubscribeRequest) {
+  console.log("Starting Pump.fun New Token Mint Monitor...")
+  console.log("Monitoring for new token creation events...\n");
+  
   const stream = await client.subscribe();
-  console.log("Starting Stream....")
 
   // Create `error` / `end` handler
   const streamClosed = new Promise<void>((resolve, reject) => {
@@ -56,40 +92,120 @@ interface SubscribeRequest {
 
   // Handle updates
   stream.on("data", async (data) => {
-    try{
+    if (data?.transaction) {
+      const txn = TXN_FORMATTER.formTransactionFromJson(
+        data.transaction,
+        Date.now()
+      );
 
-     const result = await tOutPut(data);
-
-     const Ca = result.meta.postTokenBalances[0].mint;
-     const signature = result.signature; // signature is at top level
-   
-    console.log(`
-      NEWLY MINTED
-      Ca : ${Ca}
-      Signature: ${signature}
-      Timestamp: ${new Date().toISOString()}
-    
-   `);
-   
-   // Save to database
-   const tokenData = {
-     Ca: Ca,
-     mint: Ca,
-     signature: signature,
-     timestamp: new Date().toISOString(),
-     creator: result.message.accountKeys[0] // First signer is usually creator
-   };
-   
-   savePumpfunToken(tokenData).catch(error => {
-     console.error("Failed to save Pump.fun token to database:", error);
-   });
-   
- 
-}catch(error){
-  if(error){
-  }
-}
-});
+      const parsedTxn = decodePumpFunTransaction(txn);
+      if (!parsedTxn) return;
+      
+      // Look for create instruction
+      const createInstruction = parsedTxn.instructions.find(
+        (ix: any) => ix.name === "create"
+      );
+      
+      if (!createInstruction) return;
+      
+      // Type guard to ensure we have the right instruction type
+      if (!('args' in createInstruction) || !('accounts' in createInstruction)) return;
+      
+      // Extract all the data from the create instruction
+      const createData = createInstruction.args as any;
+      const accounts = createInstruction.accounts as any[];
+      
+      // Map account names to their public keys
+      const accountMap: { [key: string]: string } = {};
+      
+      // Handle both array format and object format for accounts
+      if (Array.isArray(accounts)) {
+        accounts.forEach((account: any) => {
+          const pubkey = account.pubkey?.toString() || account.address?.toString() || account.publicKey?.toString() || "";
+          accountMap[account.name] = pubkey;
+        });
+      } else if (typeof createInstruction.accounts === 'object') {
+        // If accounts is an object with named properties
+        Object.entries(createInstruction.accounts).forEach(([name, value]: [string, any]) => {
+          if (typeof value === 'string') {
+            accountMap[name] = value;
+          } else if (value && typeof value === 'object' && 'toString' in value) {
+            accountMap[name] = value.toString();
+          }
+        });
+      }
+      
+      // Check for CreateEvent in the events
+      const createEvent = parsedTxn.events?.find((e: any) => e.name === 'CreateEvent');
+      
+      const tokenData: CreateTokenData = {
+        name: createData.name || "",
+        symbol: createData.symbol || "",
+        uri: createData.uri || "",
+        mint: accountMap.mint || createEvent?.data?.mint || "",
+        mintAuthority: accountMap.mintAuthority || accountMap.mint_authority || "",
+        bondingCurve: accountMap.bondingCurve || accountMap.bonding_curve || createEvent?.data?.bonding_curve || "",
+        associatedBondingCurve: accountMap.associatedBondingCurve || accountMap.associated_bonding_curve || "",
+        global: accountMap.global || "",
+        mplTokenMetadata: accountMap.mplTokenMetadata || accountMap.mpl_token_metadata || "",
+        metadata: accountMap.metadata || "",
+        user: accountMap.user || createEvent?.data?.user || "",
+        timestamp: new Date().toISOString(),
+        signature: txn.transaction.signatures[0],
+        slot: data.slot,
+      };
+      
+      // Debug log if bonding curve is still empty
+      if (!tokenData.bondingCurve) {
+        console.log("Debug - Instruction:", JSON.stringify(createInstruction, null, 2));
+        console.log("Debug - Events:", JSON.stringify(parsedTxn.events, null, 2));
+      }
+      
+      console.log(
+        `[NEW TOKEN CREATED]`,
+        new Date(),
+        "\n",
+        JSON.stringify({
+          ...tokenData,
+          pumpFunUrl: `https://pump.fun/coin/${tokenData.mint}`,
+          solscanUrl: `https://solscan.io/tx/${tokenData.signature}`,
+          shyftUrl: `https://translator.shyft.to/tx/${tokenData.signature}`
+        }, null, 2) + "\n"
+      );
+      
+      // Save to database
+      try {
+        const saveData = {
+          Ca: tokenData.mint,
+          mint: tokenData.mint,
+          signature: tokenData.signature,
+          timestamp: tokenData.timestamp,
+          creator: tokenData.user,
+          name: tokenData.name,
+          symbol: tokenData.symbol,
+          metadata: {
+            uri: tokenData.uri,
+            bondingCurve: tokenData.bondingCurve,
+            mintAuthority: tokenData.mintAuthority,
+            associatedBondingCurve: tokenData.associatedBondingCurve,
+            global: tokenData.global,
+            mplTokenMetadata: tokenData.mplTokenMetadata,
+            metadataAccount: tokenData.metadata,
+            slot: tokenData.slot
+          }
+        };
+        
+        await savePumpfunToken(saveData);
+        console.log(`💾 New token saved to database`);
+      } catch (error) {
+        console.error(`❌ Failed to save token:`, error);
+      }
+      
+      console.log(
+        "--------------------------------------------------------------------------------------------------"
+      );
+    }
+  });
 
   // Send subscribe request
   await new Promise<void>((resolve, reject) => {
@@ -109,6 +225,11 @@ interface SubscribeRequest {
 }
 
 async function subscribeCommand(client: Client, args: SubscribeRequest) {
+  console.log("Pump.fun New Token Mint Monitor");
+  console.log("================================");
+  console.log("Program ID:", PUMP_FUN_PROGRAM_ID.toBase58());
+  console.log("");
+  
   while (true) {
     try {
       await handleStream(client, args);
@@ -118,32 +239,82 @@ async function subscribeCommand(client: Client, args: SubscribeRequest) {
     }
   }
 }
+
 const client = new Client(
   process.env.GRPC_URL!,
   process.env.X_TOKEN!,
-  undefined,
+  undefined
 );
 
-const req = {
-accounts: {},
-slots: {},
-transactions: {
-  pumpfun: {
-    vote: false,
-    failed: false,
-    signature: undefined,
-    accountInclude: [pumpfun], //Address 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P
-    accountExclude: [],
-    accountRequired: [],
+const req: SubscribeRequest = {
+  accounts: {},
+  slots: {},
+  transactions: {
+    pumpFun: {
+      vote: false,
+      failed: false,
+      signature: undefined,
+      accountInclude: [PUMP_FUN_PROGRAM_ID.toBase58()],
+      accountExclude: [],
+      accountRequired: [],
+    },
   },
-},
-transactionsStatus: {},
-entry: {},
-blocks: {},
-blocksMeta: {},
-accountsDataSlice: [],
-ping: undefined,
-commitment: CommitmentLevel.PROCESSED, //for receiving confirmed txn updates
+  transactionsStatus: {},
+  entry: {},
+  blocks: {},
+  blocksMeta: {},
+  accountsDataSlice: [],
+  ping: undefined,
+  commitment: CommitmentLevel.CONFIRMED,
 };
 
-subscribeCommand(client,req);
+subscribeCommand(client, req);
+
+function decodePumpFunTransaction(tx: VersionedTransactionResponse) {
+  if (tx.meta?.err) return;
+  
+  try {
+    const parsedIxs = PUMP_FUN_IX_PARSER.parseTransactionData(
+      tx.transaction.message,
+      tx.meta!.loadedAddresses
+    );
+    
+    const pumpFunIxs = parsedIxs.filter((ix) =>
+      ix.programId.equals(PUMP_FUN_PROGRAM_ID)
+    );
+    
+    const hydratedTx = hydrateLoadedAddresses(tx);
+    const parsedInnerIxs = PUMP_FUN_IX_PARSER.parseTransactionWithInnerInstructions(hydratedTx);
+    const pumpfunInnerIxs = parsedInnerIxs.filter((ix) =>
+      ix.programId.equals(PUMP_FUN_PROGRAM_ID)
+    );
+    
+    if (pumpFunIxs.length === 0 && pumpfunInnerIxs.length === 0) return;
+    
+    const events = PUMP_FUN_EVENT_PARSER.parseEvent(tx);
+    const result = { instructions: pumpFunIxs, inner_ixs: pumpfunInnerIxs, events };
+    bnLayoutFormatter(result);
+    
+    return result;
+  } catch (err) {
+    // Silent error handling for unrecognized instructions
+  }
+}
+
+function hydrateLoadedAddresses(tx: VersionedTransactionResponse): VersionedTransactionResponse {
+  const loaded = tx.meta?.loadedAddresses;
+  if (!loaded) return tx;
+
+  function ensurePublicKey(arr: (Buffer | PublicKey)[]) {
+    return arr.map(item =>
+      item instanceof PublicKey ? item : new PublicKey(item)
+    );
+  }
+
+  tx.meta!.loadedAddresses = {
+    writable: ensurePublicKey(loaded.writable),
+    readonly: ensurePublicKey(loaded.readonly),
+  };
+
+  return tx;
+}
