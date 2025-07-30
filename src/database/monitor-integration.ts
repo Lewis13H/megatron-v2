@@ -1,4 +1,5 @@
 import { pool } from './config';
+import { PoolOperations } from './pool-operations';
 
 interface TokenData {
   mint_address: string;
@@ -12,6 +13,8 @@ interface TokenData {
   initial_supply?: string;
   metadata?: any;
 }
+
+const poolOps = new PoolOperations(pool);
 
 async function insertToken(tokenData: TokenData) {
   const client = await pool.connect();
@@ -74,6 +77,11 @@ export async function saveRaydiumToken(monitorOutput: any) {
       return null;
     }
     
+    if (!monitorOutput.poolState) {
+      console.error('Cannot save token: poolState is missing');
+      return null;
+    }
+    
     // Extract and format the data from monitor output
     const formattedData = {
       timestamp: monitorOutput.timestamp || new Date().toISOString(),
@@ -100,9 +108,30 @@ export async function saveRaydiumToken(monitorOutput: any) {
       }
     };
     
-    const result = await insertToken(tokenData);
-    console.log(`💾 Saved Raydium token to database: ${result.mint_address.substring(0, 10)}...`);
-    return result;
+    // Save token first
+    const tokenResult = await insertToken(tokenData);
+    console.log(`💾 Saved Raydium token to database: ${tokenResult.mint_address.substring(0, 10)}...`);
+    
+    // Now save the pool
+    try {
+      // Prepare pool data
+      const poolData = {
+        pool_address: formattedData.poolState,
+        base_mint: formattedData.baseTokenMint,
+        quote_mint: formattedData.quoteTokenMint === 'SOL' ? 'So11111111111111111111111111111111111111112' : formattedData.quoteTokenMint,
+        platform: 'raydium_launchpad' as const,
+        initial_price: formattedData.initialPrice,
+        initial_quote_liquidity: formattedData.initialLiquidity ? String(formattedData.initialLiquidity) : undefined
+      };
+      
+      const poolResult = await poolOps.insertPoolWithToken(poolData, formattedData.baseTokenMint);
+      console.log(`💾 Saved Raydium pool to database: ${poolResult.pool_address.substring(0, 10)}...`);
+    } catch (poolError) {
+      console.error('Failed to save pool (may already exist):', poolError);
+      // Don't fail the whole operation if pool save fails
+    }
+    
+    return tokenResult;
   } catch (error) {
     console.error('Failed to save Raydium token:', error);
     // Don't throw, just return null to allow monitor to continue
@@ -119,7 +148,12 @@ export async function savePumpfunToken(monitorOutput: any) {
       Ca: monitorOutput.Ca || monitorOutput.mint,
       symbol: monitorOutput.symbol,
       name: monitorOutput.name,
-      creator: monitorOutput.creator || monitorOutput.user || 'unknown'
+      creator: monitorOutput.creator || monitorOutput.user || 'unknown',
+      bondingCurve: monitorOutput.bondingCurve || monitorOutput.bonding_curve,
+      virtualSolReserves: monitorOutput.virtualSolReserves,
+      virtualTokenReserves: monitorOutput.virtualTokenReserves,
+      realSolReserves: monitorOutput.realSolReserves,
+      realTokenReserves: monitorOutput.realTokenReserves
     };
     
     const tokenData: TokenData = {
@@ -133,9 +167,34 @@ export async function savePumpfunToken(monitorOutput: any) {
       metadata: formattedData
     };
     
-    const result = await insertToken(tokenData);
-    console.log(`💾 Saved Pump.fun token to database: ${result.mint_address.substring(0, 10)}...`);
-    return result;
+    // Save token first
+    const tokenResult = await insertToken(tokenData);
+    console.log(`💾 Saved Pump.fun token to database: ${tokenResult.mint_address.substring(0, 10)}...`);
+    
+    // Save pool if bonding curve address is available
+    if (formattedData.bondingCurve) {
+      try {
+        const poolData = {
+          pool_address: formattedData.bondingCurve,
+          base_mint: formattedData.Ca,
+          quote_mint: 'So11111111111111111111111111111111111111112', // SOL
+          platform: 'pumpfun' as const,
+          bonding_curve_address: formattedData.bondingCurve,
+          virtual_sol_reserves: formattedData.virtualSolReserves,
+          virtual_token_reserves: formattedData.virtualTokenReserves,
+          real_sol_reserves: formattedData.realSolReserves,
+          real_token_reserves: formattedData.realTokenReserves
+        };
+        
+        const poolResult = await poolOps.insertPoolWithToken(poolData, formattedData.Ca);
+        console.log(`💾 Saved Pump.fun pool to database: ${poolResult.pool_address.substring(0, 10)}...`);
+      } catch (poolError) {
+        console.error('Failed to save pool (may already exist):', poolError);
+        // Don't fail the whole operation if pool save fails
+      }
+    }
+    
+    return tokenResult;
   } catch (error) {
     console.error('Failed to save Pump.fun token:', error);
     throw error;

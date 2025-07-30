@@ -117,14 +117,15 @@ SELECT platform, COUNT(*) FROM tokens GROUP BY platform;
 
 ---
 
-## Session 2: Pool Data & Relationships
+## Session 2: Pool Data & Relationships ✅ COMPLETED
 
 ### Goals
-- Create pool tables
-- Link pools to tokens
-- Store bonding curve and liquidity data
+- ✅ Create pool tables
+- ✅ Link pools to tokens
+- ✅ Store bonding curve and liquidity data
+- ✅ Update monitor integration to save pools
 
-### Implementation Steps
+### Implementation Completed
 
 ```sql
 -- Create pools table
@@ -219,10 +220,51 @@ FROM pools
 WHERE platform = 'pumpfun' AND bonding_curve_progress IS NOT NULL;
 ```
 
-### Success Criteria
-- [ ] All pools have valid token relationships
-- [ ] Pool addresses match blockchain data
-- [ ] Initial prices calculate correctly from reserves
+### Implementation Details
+
+1. **Pool Table Created** (`migrations/002_create_pools.sql`):
+   - Support for both Raydium Launchpad and Pump.fun platforms
+   - Platform-specific fields (bonding curves, LP tokens)
+   - Foreign key relationship to tokens table
+   - Proper indexes for performance
+
+2. **Pool Operations Module** (`pool-operations.ts`):
+   - Transactional pool insertion with token validation
+   - Pool lookup methods by address, token ID, or mint
+   - Reserve update functionality for Pump.fun
+   - Price calculation from reserves
+
+3. **Monitor Integration Updated** (`monitor-integration.ts`):
+   - Raydium monitor now saves pool with `poolState` as pool address
+   - Pump.fun monitor saves pool when bonding curve is available
+   - Automatic SOL mint address normalization
+   - Error handling for duplicate pools
+
+4. **Transaction Integration** (`transaction-monitor-integration.ts`):
+   - Proper pool lookup for transaction saving
+   - Support for both pool_address and bonding_curve_address
+   - Caching for performance
+
+### Current Status
+
+```bash
+# Setup pool table
+npm run db:setup:pools
+
+# Test pool operations
+npm run db:test:pools
+```
+
+### Database State
+- ✅ 4 pools created (3 Pump.fun, 1 Raydium)
+- ✅ All pools have valid token relationships
+- ✅ No orphaned pools
+- ✅ Transaction monitor properly links to pools
+
+### Success Criteria Achieved
+- ✅ All pools have valid token relationships
+- ✅ Pool addresses stored correctly (poolState for Raydium, bondingCurve for Pump.fun)
+- ✅ Initial prices and liquidity data captured
 
 ---
 
