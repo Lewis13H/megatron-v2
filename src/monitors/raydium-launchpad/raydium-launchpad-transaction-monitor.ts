@@ -18,6 +18,7 @@ import { SolanaEventParser } from "./utils/event-parser";
 import { bnLayoutFormatter } from "./utils/bn-layout-formatter";
 import raydiumLaunchpadIdl from "./idls/raydium_launchpad.json";
 import { getDbPool, PoolOperations, PoolData } from "../../database";
+import { getTransactionIntegration, MonitorTransaction } from "../../database/transaction-monitor-integration";
 
 interface SubscribeRequest {
   accounts: { [key: string]: SubscribeRequestFilterAccounts };
@@ -82,6 +83,7 @@ RAYDIUM_LAUNCHPAD_EVENT_PARSER.addParserFromIdl(
 // Initialize database operations
 const dbPool = getDbPool();
 const poolOperations = new PoolOperations(dbPool);
+const txIntegration = getTransactionIntegration();
 
 async function handleStream(client: Client, args: SubscribeRequest) {
   console.log("🚀 Starting Comprehensive Raydium Launchpad Transaction Monitor...")
@@ -414,6 +416,76 @@ ${parsedTx.events.map(evt => `  - ${evt.name || 'Event'}`).join('\n')}` : ''}
       } else {
         console.error(`❌ Failed to save pool to database:`, error.message);
       }
+    }
+  }
+
+  // Save buy/sell transactions to database
+  if ((parsedTx.type === TransactionType.BUY || parsedTx.type === TransactionType.SELL) && 
+      parsedTx.data.baseMint && parsedTx.data.poolId) {
+    try {
+      // Calculate SOL and token amounts
+      const isBuy = parsedTx.type === TransactionType.BUY;
+      let solAmount = 0;
+      let tokenAmount = 0;
+      
+      // For Raydium, we need to determine which token is SOL
+      const isBaseSol = parsedTx.data.baseMint === SOL_MINT.toBase58();
+      const isQuoteSol = parsedTx.data.quoteMint === SOL_MINT.toBase58();
+      
+      if (isBuy) {
+        // Buy: User sends SOL, receives tokens
+        if (parsedTx.data.amountIn) {
+          solAmount = parseInt(parsedTx.data.amountIn) / 1e9; // Convert lamports to SOL
+        }
+        if (parsedTx.data.amountOut) {
+          // Assume token has 6 decimals unless we know otherwise
+          tokenAmount = parseInt(parsedTx.data.amountOut) / 1e6;
+        }
+      } else {
+        // Sell: User sends tokens, receives SOL
+        if (parsedTx.data.amountIn) {
+          tokenAmount = parseInt(parsedTx.data.amountIn) / 1e6;
+        }
+        if (parsedTx.data.amountOut) {
+          solAmount = parseInt(parsedTx.data.amountOut) / 1e9;
+        }
+      }
+
+      const monitorTx: MonitorTransaction = {
+        signature: parsedTx.signature,
+        type: parsedTx.type === TransactionType.BUY ? 'buy' : 'sell',
+        user: parsedTx.user,
+        mint: parsedTx.data.baseMint,
+        poolAddress: parsedTx.data.poolId,
+        solAmount: solAmount,
+        tokenAmount: tokenAmount,
+        timestamp: new Date(parsedTx.blockTime).toISOString(),
+        slot: parsedTx.slot,
+        amountIn: parsedTx.data.amountIn,
+        amountInDecimals: isBuy ? 9 : 6, // SOL has 9 decimals, assume token has 6
+        amountOut: parsedTx.data.amountOut,
+        amountOutDecimals: isBuy ? 6 : 9,
+        protocolFee: parsedTx.data.protocolFee,
+        platformFee: parsedTx.data.platformFee,
+        transactionFee: parsedTx.fee,
+        success: parsedTx.success,
+        rawData: {
+          program: 'raydium_launchpad',
+          transactionData: parsedTx.data,
+          events: parsedTx.events,
+          instructions: parsedTx.instructions.map(ix => ix.name)
+        }
+      };
+
+      const saved = await txIntegration.saveTransaction(monitorTx);
+
+      if (saved) {
+        console.log(`💾 ${parsedTx.type} transaction saved to database`);
+      } else {
+        console.log(`⚠️  Transaction not saved (token/pool may not exist in DB yet)`);
+      }
+    } catch (error) {
+      console.error(`❌ Failed to save transaction to database:`, error);
     }
   }
 }

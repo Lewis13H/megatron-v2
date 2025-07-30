@@ -16,7 +16,10 @@
     "graduation:monitor": "npx ts-node src/monitors/graduation/graduation-monitor.ts",
     "build": "npx tsc",
     "db:setup": "npx ts-node src/database/setup/setup-database.ts",
+    "db:setup:transactions": "npx ts-node src/database/setup/03-setup-transactions.ts",
     "db:validate": "npx ts-node src/database/scripts/validate-tokens.ts",
+    "db:test:transactions": "npx ts-node src/database/test-transaction-operations.ts",
+    "db:perf:transactions": "npx ts-node src/database/performance-test-transactions.ts",
     "check-tx": "npx ts-node src/database/check-transaction.ts"
   },
   "dependencies": {

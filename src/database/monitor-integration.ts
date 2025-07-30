@@ -123,13 +123,13 @@ export async function savePumpfunToken(monitorOutput: any) {
     };
     
     const tokenData: TokenData = {
-      mint_address: formattedData.Ca || formattedData.mint,
+      mint_address: formattedData.Ca,
       symbol: formattedData.symbol,
       name: formattedData.name,
       platform: 'pumpfun',
       creation_signature: formattedData.signature,
       creation_timestamp: new Date(formattedData.timestamp),
-      creator_address: formattedData.creator || formattedData.user || 'unknown',
+      creator_address: formattedData.creator,
       metadata: formattedData
     };
     

@@ -19,6 +19,7 @@ import { SolanaEventParser } from "./utils/event-parser";
 import { parseSwapTransactionOutput } from "./utils/pump-fun-parsed-transaction";
 import pumpFunIdl from "./idls/pump_0.1.0.json";
 import { savePumpfunToken } from "../../database/monitor-integration";
+import { getTransactionIntegration, MonitorTransaction } from "../../database/transaction-monitor-integration";
 
 interface SubscribeRequest {
   accounts: { [key: string]: SubscribeRequestFilterAccounts };
@@ -59,6 +60,9 @@ PUMP_FUN_EVENT_PARSER.addParserFromIdl(
   pumpFunIdl as Idl
 );
 
+// Initialize transaction integration
+const txIntegration = getTransactionIntegration();
+
 async function handleStream(client: Client, args: SubscribeRequest) {
   console.log("Starting Pump.fun Transaction Monitor...")
   console.log("Monitoring for buy/sell events...\n");
@@ -81,7 +85,7 @@ async function handleStream(client: Client, args: SubscribeRequest) {
   });
 
   // Handle updates
-  stream.on("data", (data) => {
+  stream.on("data", async (data) => {
     if (data?.transaction) {
       const txn = TXN_FORMATTER.formTransactionFromJson(
         data.transaction,
@@ -130,10 +134,41 @@ async function handleStream(client: Client, args: SubscribeRequest) {
         }, null, 2) + "\n"
       );
       
-      // Note: This monitor tracks all transactions, not just creation
-      // For new token detection, use pumpfun-monitor-new-token-mint.ts
-      // We could save first transaction per token, but that would require
-      // checking if token already exists in DB
+      // Save transaction to database
+      try {
+        const monitorTx: MonitorTransaction = {
+          signature: output.signature,
+          type: output.type,
+          user: output.user,
+          mint: output.mint,
+          bondingCurve: output.bondingCurve,
+          solAmount: output.solAmount,
+          tokenAmount: output.tokenAmount,
+          timestamp: output.timestamp,
+          slot: data.slot || 0,
+          amountIn: swapData.in_amount?.toString(),
+          amountInDecimals: output.type === 'buy' ? 9 : 6, // SOL has 9 decimals, token has 6
+          amountOut: swapData.out_amount?.toString(),
+          amountOutDecimals: output.type === 'buy' ? 6 : 9,
+          transactionFee: data.transaction?.meta?.fee,
+          success: !data.transaction?.meta?.err,
+          rawData: {
+            program: 'pumpfun',
+            instructionData: swapData,
+            parsedTxn: parsedTxn
+          }
+        };
+
+        const saved = await txIntegration.saveTransaction(monitorTx);
+
+        if (saved) {
+          console.log(`💾 ${output.type.toUpperCase()} transaction saved to database`);
+        } else {
+          console.log(`⚠️  Transaction not saved (token/pool may not exist in DB yet)`);
+        }
+      } catch (error) {
+        console.error(`❌ Failed to save transaction:`, error);
+      }
       
       console.log(
         "--------------------------------------------------------------------------------------------------"
