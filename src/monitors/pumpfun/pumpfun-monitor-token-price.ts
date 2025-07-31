@@ -86,12 +86,30 @@ async function handleStream(client: Client, args: SubscribeRequest) {
       
       if (!formattedSwapTxn) return;
       
+      // Get current SOL price for USD calculations
+      let priceUsd = null;
+      let marketCapUsd = null;
+      try {
+        const solPriceResult = await dbPool.query(
+          'SELECT price_usd FROM sol_usd_prices ORDER BY price_time DESC LIMIT 1'
+        );
+        if (solPriceResult.rows.length > 0) {
+          const solPrice = parseFloat(solPriceResult.rows[0].price_usd);
+          priceUsd = parseFloat(formattedSwapTxn.formattedPrice) * solPrice;
+          marketCapUsd = priceUsd * 1_000_000_000; // 1 billion token supply
+        }
+      } catch (error) {
+        console.error('Error fetching SOL price:', error);
+      }
+      
       console.log(
         new Date(),
         ":",
         `New transaction https://translator.shyft.to/tx/${txn.transaction.signatures[0]}`,
-        `\n📊 Bonding Curve Progress: ${formattedSwapTxn.bondingCurveProgress.toFixed(2)}%\n`,
-        JSON.stringify(formattedSwapTxn, null, 2) + "\n"
+        `\n📊 Bonding Curve Progress: ${formattedSwapTxn.bondingCurveProgress.toFixed(2)}%`,
+        `\n💰 Price: ${formattedSwapTxn.formattedPrice} SOL` + (priceUsd ? ` ($${priceUsd.toFixed(9)} USD)` : ''),
+        `\n📈 Market Cap:` + (marketCapUsd ? ` $${marketCapUsd.toFixed(2)} USD` : ' N/A'),
+        `\n${JSON.stringify(formattedSwapTxn, null, 2)}\n`
       );
       
       // Save to database
@@ -105,9 +123,10 @@ async function handleStream(client: Client, args: SubscribeRequest) {
             real_sol_reserves = $3,
             real_token_reserves = $4,
             latest_price = $5,
-            bonding_curve_progress = $6,
+            latest_price_usd = $6,
+            bonding_curve_progress = $7,
             updated_at = NOW()
-          WHERE bonding_curve_address = $7
+          WHERE bonding_curve_address = $8
         `;
         
         await dbPool.query(updateQuery, [
@@ -116,6 +135,7 @@ async function handleStream(client: Client, args: SubscribeRequest) {
           formattedSwapTxn.real_sol_reserves?.toString() || '0',
           formattedSwapTxn.real_token_reserves?.toString() || '0',
           formattedSwapTxn.formattedPrice,
+          priceUsd ? priceUsd.toFixed(20).replace(/0+$/, '') : null,
           formattedSwapTxn.bondingCurveProgress.toFixed(2),
           formattedSwapTxn.bonding_curve
         ]);

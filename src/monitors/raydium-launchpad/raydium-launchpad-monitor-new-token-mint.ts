@@ -17,6 +17,7 @@ import { TransactionFormatter } from "./utils/transaction-formatter";
 import { bnLayoutFormatter } from "./utils/bn-layout-formatter";
 import raydiumLaunchpadIdl from "./idls/raydium_launchpad.json";
 import { saveRaydiumToken } from "../../database/monitor-integration";
+import { getDbPool } from "../../database";
 
 interface SubscribeRequest {
   accounts: { [key: string]: SubscribeRequestFilterAccounts };
@@ -336,6 +337,21 @@ async function handleStream(client: Client, args: SubscribeRequest) {
         tokenMetadata.metadataUri = tokenMetadata.metadataUri.replace(/\u0000/g, '').trim();
       }
       
+      // Get current SOL price for USD calculations
+      let priceUsd = null;
+      try {
+        const dbPool = getDbPool();
+        const solPriceResult = await dbPool.query(
+          'SELECT price_usd FROM sol_usd_prices ORDER BY price_time DESC LIMIT 1'
+        );
+        if (solPriceResult.rows.length > 0 && (initializeInstruction.args as any)?.initial_price) {
+          const solPrice = parseFloat(solPriceResult.rows[0].price_usd);
+          priceUsd = parseFloat((initializeInstruction.args as any).initial_price) * solPrice;
+        }
+      } catch (error) {
+        console.error('Error fetching SOL price:', error);
+      }
+      
       const output = {
         timestamp: new Date().toISOString(),
         signature: txn.transaction.signatures[0],
@@ -343,6 +359,7 @@ async function handleStream(client: Client, args: SubscribeRequest) {
         baseTokenMint: baseTokenMint?.toString(),
         quoteTokenMint: quoteTokenMint?.toString() === 'So11111111111111111111111111111111111111112' ? 'SOL' : quoteTokenMint?.toString(),
         initialPrice: (initializeInstruction.args as any)?.initial_price,
+        initialPriceUsd: priceUsd,
         initialLiquidity: (initializeInstruction.args as any)?.initial_liquidity,
         creator: creator?.toString() || 'unknown',
         tokenMetadata: tokenMetadata,
@@ -353,8 +370,10 @@ async function handleStream(client: Client, args: SubscribeRequest) {
       console.log(
         new Date(),
         ":",
-        `New token mint detected\n`,
-        JSON.stringify(output, null, 2) + "\n"
+        `New token mint detected`,
+        `\n💰 Initial Price:` + (output.initialPrice ? ` ${output.initialPrice} SOL` : ' N/A') + (priceUsd ? ` ($${priceUsd.toFixed(9)} USD)` : ''),
+        `\n📊 Token: ${tokenMetadata?.symbol || 'Unknown'} (${tokenMetadata?.name || 'Unknown'})`,
+        `\n${JSON.stringify(output, null, 2)}\n`
       );
       
       // Save to database

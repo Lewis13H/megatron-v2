@@ -6,6 +6,7 @@ export interface PoolData {
   quote_mint: string;
   platform: 'pumpfun' | 'raydium_launchpad';
   initial_price?: number;
+  initial_price_usd?: string;
   initial_base_liquidity?: string;
   initial_quote_liquidity?: string;
   
@@ -17,6 +18,7 @@ export interface PoolData {
   real_token_reserves?: string;
   bonding_curve_progress?: number;
   latest_price?: string;
+  latest_price_usd?: string;
   
   // Raydium specific
   lp_mint?: string;
@@ -59,11 +61,11 @@ export class PoolOperations {
       const poolQuery = `
         INSERT INTO pools (
           pool_address, token_id, base_mint, quote_mint, platform,
-          initial_price, initial_base_liquidity, initial_quote_liquidity,
+          initial_price, initial_price_usd, initial_base_liquidity, initial_quote_liquidity,
           bonding_curve_address, virtual_sol_reserves, virtual_token_reserves,
           real_sol_reserves, real_token_reserves, bonding_curve_progress,
-          lp_mint, base_vault, quote_vault, latest_price
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+          lp_mint, base_vault, quote_vault, latest_price, latest_price_usd
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
         RETURNING *
       `;
       
@@ -74,6 +76,7 @@ export class PoolOperations {
         poolData.quote_mint,
         poolData.platform,
         poolData.initial_price,
+        poolData.initial_price_usd,
         poolData.initial_base_liquidity,
         poolData.initial_quote_liquidity,
         poolData.bonding_curve_address,
@@ -85,7 +88,8 @@ export class PoolOperations {
         poolData.lp_mint,
         poolData.base_vault,
         poolData.quote_vault,
-        poolData.latest_price
+        poolData.latest_price,
+        poolData.latest_price_usd
       ];
       
       const poolResult = await client.query(poolQuery, poolValues);

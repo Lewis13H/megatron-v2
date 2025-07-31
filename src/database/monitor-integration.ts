@@ -16,6 +16,28 @@ interface TokenData {
 
 const poolOps = new PoolOperations(pool);
 
+// Helper function to get current SOL price
+async function getCurrentSolPrice(): Promise<number | null> {
+  try {
+    const result = await pool.query(`
+      SELECT price_usd 
+      FROM sol_usd_prices 
+      ORDER BY price_time DESC 
+      LIMIT 1
+    `);
+    
+    if (result.rows.length > 0) {
+      return parseFloat(result.rows[0].price_usd);
+    }
+    
+    console.warn('No SOL/USD price found in database');
+    return null;
+  } catch (error) {
+    console.error('Error fetching SOL price:', error);
+    return null;
+  }
+}
+
 async function insertToken(tokenData: TokenData) {
   const client = await pool.connect();
   
@@ -117,6 +139,18 @@ export async function saveRaydiumToken(monitorOutput: any) {
     
     // Now save the pool
     try {
+      // Calculate USD values
+      let initialPriceUsd: string | undefined;
+      
+      if (formattedData.initialPrice) {
+        const solPrice = await getCurrentSolPrice();
+        if (solPrice) {
+          const priceInUsd = parseFloat(formattedData.initialPrice) * solPrice;
+          initialPriceUsd = priceInUsd.toFixed(20).replace(/0+$/, '');
+          console.log(`   USD Price: $${priceInUsd.toFixed(9)}`);
+        }
+      }
+      
       // Prepare pool data
       const poolData = {
         pool_address: formattedData.poolState,
@@ -124,6 +158,7 @@ export async function saveRaydiumToken(monitorOutput: any) {
         quote_mint: formattedData.quoteTokenMint === 'SOL' ? 'So11111111111111111111111111111111111111112' : formattedData.quoteTokenMint,
         platform: 'raydium_launchpad' as const,
         initial_price: formattedData.initialPrice,
+        initial_price_usd: initialPriceUsd,
         initial_quote_liquidity: formattedData.initialLiquidity ? String(formattedData.initialLiquidity) : undefined
       };
       
@@ -188,13 +223,27 @@ export async function savePumpfunToken(monitorOutput: any) {
       try {
         // Calculate initial price and bonding curve progress
         let initialPrice: string | undefined;
+        let initialPriceUsd: string | undefined;
         let bondingCurveProgress: number | undefined;
+        let marketCapUsd: number | undefined;
         
         if (formattedData.virtualSolReserves && formattedData.virtualTokenReserves) {
           // Calculate price: virtualSolReserves / virtualTokenReserves
           const sol = Number(formattedData.virtualSolReserves) / 1_000_000_000; // convert lamports to SOL
           const tokens = Number(formattedData.virtualTokenReserves) / Math.pow(10, 6);
-          initialPrice = (sol / tokens).toFixed(20).replace(/0+$/, '');
+          const priceInSol = sol / tokens;
+          initialPrice = priceInSol.toFixed(20).replace(/0+$/, '');
+          
+          // Get current SOL price for USD calculations
+          const solPrice = await getCurrentSolPrice();
+          if (solPrice) {
+            const priceInUsd = priceInSol * solPrice;
+            initialPriceUsd = priceInUsd.toFixed(20).replace(/0+$/, '');
+            
+            // Calculate market cap (1 billion token supply)
+            marketCapUsd = priceInUsd * 1_000_000_000;
+            console.log(`   USD Price: $${priceInUsd.toFixed(9)}, Market Cap: $${marketCapUsd.toFixed(2)}`);
+          }
           
           // Calculate bonding curve progress
           const INITIAL_VIRTUAL_TOKEN_RESERVES = 1_073_000_000 * Math.pow(10, 6);
@@ -215,6 +264,7 @@ export async function savePumpfunToken(monitorOutput: any) {
           real_sol_reserves: formattedData.realSolReserves,
           real_token_reserves: formattedData.realTokenReserves,
           latest_price: initialPrice,
+          latest_price_usd: initialPriceUsd,
           bonding_curve_progress: bondingCurveProgress
         };
         
