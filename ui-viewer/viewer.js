@@ -104,25 +104,24 @@ function renderTokens() {
         let bcProgress = 'N/A';
         let marketCapSol = 'N/A';
         
-        // Debug first token
-        if (index === 0 && pool) {
-            console.log('Debug first token:', {
-                symbol: token.symbol,
+        // Debug first few tokens to verify market cap calculation
+        if (index < 3 && pool) {
+            console.log(`Debug token ${index + 1} (${token.symbol}):`, {
+                platform: token.platform,
                 virtualSolReserves: pool.virtualSolReserves,
                 virtualTokenReserves: pool.virtualTokenReserves,
-                bondingCurveProgress: pool.bondingCurveProgress
+                bondingCurveProgress: pool.bondingCurveProgress,
+                totalSupply: token.totalSupply,
+                calculatedMarketCap: 'See below after calculation'
             });
         }
         
         if (pool) {
-            // Calculate price per token in SOL from virtual reserves
-            if (pool.virtualSolReserves && pool.virtualTokenReserves) {
-                // Convert string reserves to numbers
-                const solReserves = parseFloat(pool.virtualSolReserves);
-                const tokenReserves = parseFloat(pool.virtualTokenReserves);
-                
-                // Price per token = SOL reserves / token reserves
-                const pricePerToken = (solReserves / 1e9) / tokenReserves;
+            // Use the latest price from database if available
+            let pricePerToken;
+            if (pool.latestPrice) {
+                // Use the authoritative price from the database
+                pricePerToken = parseFloat(pool.latestPrice);
                 
                 // Format price with appropriate decimals
                 if (pricePerToken < 0.000001) {
@@ -132,19 +131,62 @@ function renderTokens() {
                 } else {
                     pricePerSol = pricePerToken.toFixed(6);
                 }
+            } else if (pool.virtualSolReserves && pool.virtualTokenReserves) {
+                // Fallback: Calculate price from reserves if latestPrice not available
+                const solReserves = parseFloat(pool.virtualSolReserves);
+                const tokenReserves = parseFloat(pool.virtualTokenReserves);
                 
-                // Calculate market cap in SOL
-                // Market cap = Total Supply * Price per token
-                // For Pump.fun, total supply is usually 1 billion (1e9)
-                const totalSupply = token.platform === 'pumpfun' ? 1e9 : (parseFloat(token.totalSupply) || 1e9);
-                const marketCap = totalSupply * pricePerToken;
+                // Price per token = SOL reserves / token reserves
+                pricePerToken = (solReserves / 1e9) / (tokenReserves / 1e6);
                 
-                if (marketCap < 0.01) {
-                    marketCapSol = marketCap.toFixed(4);
+                // Format price with appropriate decimals
+                if (pricePerToken < 0.000001) {
+                    pricePerSol = pricePerToken.toExponential(4);
+                } else if (pricePerToken < 0.01) {
+                    pricePerSol = pricePerToken.toFixed(9);
                 } else {
-                    marketCapSol = marketCap.toFixed(2);
+                    pricePerSol = pricePerToken.toFixed(6);
                 }
             }
+                
+            // Calculate market cap in SOL
+            let marketCap;
+            
+            if (pricePerToken && token.platform === 'pumpfun') {
+                // For Pump.fun tokens, market cap = total supply × price
+                // Total supply is 1 trillion tokens (1e15 raw / 1e6 decimals = 1e9 tokens)
+                const TOTAL_SUPPLY = 1e9; // 1 billion tokens (1 trillion with 6 decimals)
+                
+                // Market cap = total supply × price per token
+                marketCap = TOTAL_SUPPLY * pricePerToken;
+                
+                // Add debug info for Pump.fun tokens
+                if (index < 3) {
+                    console.log(`Pump.fun market cap details for ${token.symbol}:`, {
+                        totalSupply: TOTAL_SUPPLY,
+                        pricePerToken: pricePerToken,
+                        calculatedMarketCap: marketCap
+                    });
+                }
+                
+            } else if (pricePerToken) {
+                // For other platforms, use traditional calculation
+                const totalSupply = token.totalSupply ? parseFloat(token.totalSupply) : 1e9;
+                marketCap = totalSupply * pricePerToken;
+            }
+                
+            // Format market cap with appropriate decimals
+            if (marketCap !== undefined) {
+                if (marketCap < 1) {
+                    marketCapSol = marketCap.toFixed(4);
+                } else if (marketCap < 100) {
+                    marketCapSol = marketCap.toFixed(2);
+                } else {
+                    marketCapSol = marketCap.toFixed(0);
+                }
+            }
+            
+            // Debug log moved inside platform-specific blocks above
             
             // Get bonding curve progress if available
             if (pool.bondingCurveProgress !== null && pool.bondingCurveProgress !== undefined) {
@@ -189,9 +231,10 @@ function renderPools() {
                     <th>Pool Address</th>
                     <th>Token</th>
                     <th>Platform</th>
+                    <th>Price (SOL)</th>
                     <th>Token Reserve</th>
                     <th>SOL Reserve</th>
-                    <th>Created</th>
+                    <th>Last Updated</th>
                 </tr>
             </thead>
             <tbody>
@@ -199,14 +242,29 @@ function renderPools() {
 
     poolsData.forEach(pool => {
         const token = tokensData.find(t => t.address === pool.tokenAddress);
+        
+        // Format price
+        let priceDisplay = 'N/A';
+        if (pool.latestPrice) {
+            const price = parseFloat(pool.latestPrice);
+            if (price < 0.000001) {
+                priceDisplay = price.toExponential(4);
+            } else if (price < 0.01) {
+                priceDisplay = price.toFixed(9);
+            } else {
+                priceDisplay = price.toFixed(6);
+            }
+        }
+        
         html += `
             <tr>
                 <td><span class="address clickable" onclick="copyToClipboard('${pool.address}')">${formatAddress(pool.address)}</span></td>
                 <td><span class="symbol">${token?.symbol || 'Unknown'}</span></td>
                 <td><span class="platform ${pool.platform}">${pool.platform}</span></td>
+                <td class="amount">${priceDisplay}</td>
                 <td class="amount">${formatNumber(pool.virtualTokenReserves)}</td>
                 <td class="amount">${formatSOL(pool.virtualSolReserves)} SOL</td>
-                <td>${formatDate(pool.createdAt)}</td>
+                <td>${formatDate(pool.updatedAt || pool.createdAt)}</td>
             </tr>
         `;
     });

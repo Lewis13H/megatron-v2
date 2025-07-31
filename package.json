@@ -12,6 +12,7 @@
     "pfmonitor:account": "npx ts-node src/monitors/pumpfun/pump-fun-account-monitor.ts",
     "pfmonitor:transaction": "npx ts-node src/monitors/pumpfun/pump-fun-transaction-monitor.ts",
     "pfmonitor:bonding": "npx ts-node src/monitors/pumpfun/pump-fun-bonding-curve-monitor.ts",
+    "pfmonitor:price": "npx ts-node src/monitors/pumpfun/pumpfun-monitor-token-price.ts",
     "graduation:monitor": "npx ts-node src/monitors/graduation/graduation-monitor.ts",
     "build": "npx tsc",
     "ui:export": "npx tsx ui-viewer/scripts/export-data.ts",
@@ -26,7 +27,9 @@
     "db:setup:prices": "npx ts-node src/database/test-price-aggregates.ts setup",
     "db:test:prices": "npx ts-node src/database/test-price-aggregates.ts test",
     "db:validate": "npx ts-node src/database/validate-tokens.ts",
-    "check-tx": "npx ts-node src/utils/transaction-lookup.ts"
+    "check-tx": "npx ts-node src/utils/transaction-lookup.ts",
+    "db:check:price": "npx ts-node src/database/check-price-monitor-data.ts",
+    "db:migrate:price": "npx ts-node src/database/run-price-migration.ts"
   },
   "dependencies": {
     "@coral-xyz/anchor": "^0.30.1",

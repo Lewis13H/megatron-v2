@@ -282,3 +282,6 @@ export class TransactionOperations {
     }
   }
 }
+
+// Export singleton instance
+export const transactionOperations = new TransactionOperations();

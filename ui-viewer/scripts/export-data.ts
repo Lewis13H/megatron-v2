@@ -49,10 +49,12 @@ async function exportPools() {
                 p.real_token_reserves as "realTokenReserves",
                 p.real_sol_reserves as "realSolReserves",
                 p.bonding_curve_progress as "bondingCurveProgress",
-                p.created_at as "createdAt"
+                p.latest_price as "latestPrice",
+                p.created_at as "createdAt",
+                p.updated_at as "updatedAt"
             FROM pools p
             JOIN tokens t ON p.token_id = t.id
-            ORDER BY p.created_at DESC
+            ORDER BY p.updated_at DESC
             LIMIT 1000
         `);
 
