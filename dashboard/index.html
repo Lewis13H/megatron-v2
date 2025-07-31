@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' http://localhost:* https://gateway.pinata.cloud https://*.ipfs.io; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src * data:; connect-src *">
+    <title>MEGATRON</title>
+    <link rel="stylesheet" href="dexscreener-style.css">
+    <script src="dashboard.js"></script>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="header-left">
+                <h1 class="header-title">MEGATRON</h1>
+                <span class="header-subtitle">Token Analysis Dashboard</span>
+            </div>
+            <div class="header-right">
+                <div class="sol-price">
+                    <span class="sol-price-label">SOL/USD</span>
+                    <span class="sol-price-value">$200.45</span>
+                    <span class="sol-price-updated">Updated: 2s ago</span>
+                </div>
+                <div class="connection-status">
+                    <span class="status-dot active"></span>
+                    <span class="status-text">Connected</span>
+                </div>
+            </div>
+        </div>
+        <table class="token-table">
+            <thead>
+                <tr>
+                    <th class="col-token">TOKEN</th>
+                    <th class="col-price">PRICE</th>
+                    <th class="col-mcap">MCAP</th>
+                    <th class="col-5m">Total</th>
+                    <th class="col-1h">Technical</th>
+                    <th class="col-6h">Holder</th>
+                    <th class="col-24h">Social</th>
+                    <th class="col-age">AGE</th>
+                    <th class="col-txns">TXNS</th>
+                    <th class="col-volume">VOLUME</th>
+                    <th class="col-makers">MAKERS</th>
+                    <th class="col-liquidity">LIQUIDITY</th>
+                </tr>
+            </thead>
+            <tbody>
+                <!-- Token rows will be populated dynamically by JavaScript -->
+            </tbody>
+        </table>
+    </div>
+</body>
+</html>
