@@ -1,7 +1,35 @@
--- This file creates functions and views that depend on the continuous aggregate
--- Run this after 004b_create_price_cagg.sql
+-- Migration: 005_create_price_continuous_aggregate
+-- Description: Creates continuous aggregate for price candles (must run outside transaction)
+-- Dependencies: 004_create_price_aggregates
+-- IMPORTANT: This migration must be run separately as continuous aggregates cannot be created in transactions
 
--- Create helper function to get latest price for a token
+-- Create continuous aggregate from transactions
+CREATE MATERIALIZED VIEW IF NOT EXISTS price_candles_1m_cagg
+WITH (timescaledb.continuous) AS
+SELECT
+    token_id,
+    time_bucket('1 minute', block_time) AS bucket,
+    first(price_per_token, block_time) AS open,
+    max(price_per_token) AS high,
+    min(price_per_token) AS low,
+    last(price_per_token, block_time) AS close,
+    sum(CASE WHEN type IN ('buy', 'sell') THEN token_amount ELSE 0 END) AS volume_token,
+    sum(CASE WHEN type IN ('buy', 'sell') THEN sol_amount ELSE 0 END) AS volume_sol,
+    count(*) AS trade_count,
+    count(DISTINCT CASE WHEN type = 'buy' THEN user_address END) AS buyer_count,
+    count(DISTINCT CASE WHEN type = 'sell' THEN user_address END) AS seller_count
+FROM transactions
+WHERE price_per_token IS NOT NULL AND price_per_token > 0
+GROUP BY token_id, time_bucket('1 minute', block_time);
+
+-- Add refresh policy to keep aggregate up-to-date
+-- Refresh every 1 minute with 2 minute lag
+SELECT add_continuous_aggregate_policy('price_candles_1m_cagg',
+    start_offset => INTERVAL '2 hours',
+    end_offset => INTERVAL '2 minutes',
+    schedule_interval => INTERVAL '1 minute');
+
+-- Update get_latest_price function to use continuous aggregate
 CREATE OR REPLACE FUNCTION get_latest_price(p_token_id UUID)
 RETURNS TABLE (
     price NUMERIC(30,10),
@@ -38,7 +66,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Create function to get price change over time
+-- Update get_price_change function to use continuous aggregate
 CREATE OR REPLACE FUNCTION get_price_change(
     p_token_id UUID,
     p_interval INTERVAL DEFAULT INTERVAL '1 hour'
@@ -79,7 +107,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Create view for recent high-volume tokens
+-- Update high_volume_tokens view to use continuous aggregate
 CREATE OR REPLACE VIEW high_volume_tokens AS
 SELECT 
     t.mint_address,

@@ -1,4 +1,6 @@
--- Add latest_price column to pools table to store the formatted price in SOL
+-- Migration: 006_add_latest_price_to_pools
+-- Description: Adds latest_price column to pools table for quick price lookups
+-- Dependencies: 002_create_pools_table
 ALTER TABLE pools ADD COLUMN IF NOT EXISTS latest_price NUMERIC(30,20);
 
 -- Create index for price queries

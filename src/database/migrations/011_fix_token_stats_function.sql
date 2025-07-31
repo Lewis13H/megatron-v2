@@ -1,4 +1,6 @@
--- Fix the ambiguous column reference in get_token_stats_with_usd function
+-- Migration: 011_fix_token_stats_function
+-- Description: Fixes ambiguous column reference in token stats function
+-- Dependencies: 010_add_usd_price_enhancements
 
 DROP FUNCTION IF EXISTS get_token_stats_with_usd(UUID);
 

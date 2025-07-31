@@ -1,5 +1,6 @@
--- Create a materialized view for token scores
--- This would be populated by your ML scoring engine
+-- Migration: 007_create_token_scores_table
+-- Description: Creates token_scores table for ML-based scoring system
+-- Dependencies: 001_create_tokens_table
 
 CREATE TABLE IF NOT EXISTS token_scores (
     token_address VARCHAR(66) PRIMARY KEY,
@@ -9,7 +10,7 @@ CREATE TABLE IF NOT EXISTS token_scores (
     social_score INTEGER NOT NULL DEFAULT 0,
     graduation_probability DECIMAL(5,2) DEFAULT 0,
     last_updated TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    CONSTRAINT fk_token_address FOREIGN KEY (token_address) REFERENCES tokens(address)
+    CONSTRAINT fk_token_address FOREIGN KEY (token_address) REFERENCES tokens(mint_address)
 );
 
 -- Index for fast lookups

@@ -1,5 +1,6 @@
--- Phase 2: USD Price Enhancements
--- Adds functions and triggers for automatic USD calculations on price candles
+-- Migration: 010_add_usd_price_enhancements
+-- Description: Adds USD price columns and calculation functions
+-- Dependencies: 004_create_price_aggregates, 008_create_sol_usd_prices
 
 -- Function to update price candles with USD values
 CREATE OR REPLACE FUNCTION update_price_candle_usd_values(

@@ -1,4 +1,6 @@
--- Fix the materialized view refresh issue
+-- Migration: 012_fix_materialized_view_refresh
+-- Description: Fixes materialized view refresh functions
+-- Dependencies: 010_add_usd_price_enhancements
 
 -- Update the refresh function to use non-concurrent refresh
 CREATE OR REPLACE FUNCTION refresh_top_tokens_usd()

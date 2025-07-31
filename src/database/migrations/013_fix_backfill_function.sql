@@ -1,4 +1,6 @@
--- Fix the backfill_transaction_usd_values function to use signature instead of id
+-- Migration: 013_fix_backfill_function
+-- Description: Fixes backfill function to use signature instead of id
+-- Dependencies: 010_add_usd_price_enhancements
 
 CREATE OR REPLACE FUNCTION backfill_transaction_usd_values(
     p_start_time TIMESTAMPTZ DEFAULT NULL,

@@ -1,5 +1,6 @@
--- Setup for SOL/USD price tracking
--- Creates tables and infrastructure for tracking Solana price in USD
+-- Migration: 008_create_sol_usd_prices
+-- Description: Creates infrastructure for tracking Solana price in USD
+-- Dependencies: None (requires TimescaleDB)
 
 -- Historical SOL/USD prices for backtesting and historical calculations
 CREATE TABLE IF NOT EXISTS sol_usd_prices (

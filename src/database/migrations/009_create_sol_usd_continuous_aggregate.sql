@@ -1,5 +1,7 @@
--- Continuous aggregate for SOL/USD candles
--- This must be run separately from the main setup script due to transaction limitations
+-- Migration: 009_create_sol_usd_continuous_aggregate
+-- Description: Creates continuous aggregate for SOL/USD price candles
+-- Dependencies: 008_create_sol_usd_prices
+-- IMPORTANT: Must be run outside a transaction
 
 -- Drop if exists (for development)
 DROP MATERIALIZED VIEW IF EXISTS sol_usd_candles_1m CASCADE;
