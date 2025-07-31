@@ -58,6 +58,9 @@ npm run db:setup:pools
 # Set up transaction tables
 npm run db:setup:transactions
 
+# Set up price aggregates and continuous views
+npm run db:setup:prices
+
 # Validate stored tokens
 npm run db:validate
 
@@ -66,6 +69,9 @@ npm run db:test:pools
 
 # Test transaction operations
 npm run db:test:transactions
+
+# Test price aggregates
+npm run db:test:prices
 
 # Performance test transactions
 npm run db:perf:transactions
@@ -134,6 +140,8 @@ Each monitor follows this pattern:
 - **tokens**: Token metadata and creation info
 - **pools**: Liquidity pool data with virtual reserves
 - **transactions**: Time-series transaction data (hypertable)
+- **price_candles_1m**: Minute-level price aggregates (hypertable)
+- **price_candles_1m_cagg**: Continuous aggregate for efficient price queries
 
 ### Monitor Integration
 Monitors automatically save data using:
@@ -168,6 +176,10 @@ import { saveRaydiumToken } from '../../database/monitor-integration';
 - ✅ Pump.fun monitor implementation
 - ✅ Transaction and account monitoring infrastructure
 - ✅ Database integration with PostgreSQL + TimescaleDB
+- ✅ Pool and transaction data storage
+- ✅ Price aggregates and continuous views (Session 4)
+- ✅ Real-time price tracking with 1-minute candles
+- ✅ Volume statistics and high-volume token detection
 - ✅ Basic event parsing and formatting
 - ✅ gRPC streaming setup
 

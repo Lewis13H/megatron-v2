@@ -16,7 +16,17 @@
     "build": "npx tsc",
     "ui:export": "npx tsx ui-viewer/scripts/export-data.ts",
     "ui:open": "start ui-viewer/index.html",
-    "ui:serve": "cd ui-viewer && npx http-server . -p 8888 -c-1 --cors"
+    "ui:serve": "cd ui-viewer && npx http-server . -p 8888 -c-1 --cors",
+    "db:setup": "npx ts-node src/database/setup.ts",
+    "db:setup:pools": "npx ts-node src/database/test-pool-operations.ts setup",
+    "db:test:pools": "npx ts-node src/database/test-pool-operations.ts test",
+    "db:setup:transactions": "npx ts-node src/database/test-transaction-operations.ts setup",
+    "db:test:transactions": "npx ts-node src/database/test-transaction-operations.ts test",
+    "db:perf:transactions": "npx ts-node src/database/test-transaction-operations.ts perf",
+    "db:setup:prices": "npx ts-node src/database/test-price-aggregates.ts setup",
+    "db:test:prices": "npx ts-node src/database/test-price-aggregates.ts test",
+    "db:validate": "npx ts-node src/database/validate-tokens.ts",
+    "check-tx": "npx ts-node src/utils/transaction-lookup.ts"
   },
   "dependencies": {
     "@coral-xyz/anchor": "^0.30.1",
