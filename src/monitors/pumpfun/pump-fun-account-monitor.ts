@@ -232,15 +232,14 @@ export class PumpFunAccountMonitor {
       }
     }
     
-    // Calculate bonding curve progress
-    const RESERVED_TOKENS = 206900000 * 1e6;  // Convert to base units (6 decimals)
-    const INITIAL_REAL_TOKEN_RESERVES = 793100000 * 1e6;  // Convert to base units (6 decimals)
+    // Calculate bonding curve progress based on SOL in the curve
+    // Pump.fun tokens graduate when ~75-76 SOL is in the bonding curve
+    const TARGET_SOL_FOR_GRADUATION = 75;  // SOL required to reach 100%
     let bondingCurveProgress = 0;
     
-    if (realToken) {
-      const realTokenAmount = this.safeNumberConversion(realToken);
-      const leftTokens = realTokenAmount - RESERVED_TOKENS;
-      bondingCurveProgress = 100 - ((leftTokens * 100) / INITIAL_REAL_TOKEN_RESERVES);
+    if (realSol) {
+      const realSolAmount = this.safeNumberConversion(realSol) / 1e9;  // Convert lamports to SOL
+      bondingCurveProgress = (realSolAmount / TARGET_SOL_FOR_GRADUATION) * 100;
       bondingCurveProgress = Math.max(0, Math.min(100, bondingCurveProgress)); // Clamp between 0-100
     }
 
@@ -288,8 +287,9 @@ export class PumpFunAccountMonitor {
         console.log(`  Note: Awaiting migration to Raydium`);
       }
     } else {
-      const remainingTokens = (realToken ? this.safeNumberConversion(realToken) - RESERVED_TOKENS : INITIAL_REAL_TOKEN_RESERVES) / 1e6;
-      console.log(`  Tokens Remaining: ${remainingTokens.toFixed(2)} (${(100 - bondingCurveProgress).toFixed(2)}% of curve)`);
+      const remainingSol = TARGET_SOL_FOR_GRADUATION - solReservesDisplay;
+      console.log(`  SOL Remaining: ${remainingSol.toFixed(2)} SOL needed to graduate`);
+      console.log(`  Progress to graduation: ${bondingCurveProgress.toFixed(2)}%`);
     }
     
     if (price > 0) {
@@ -311,20 +311,19 @@ export class PumpFunAccountMonitor {
       console.dir(accountInfo, { depth: null });
     }
     
-    // Update pool in database if we have a mint address
-    if (mintAddress) {
-      this.updatePoolInDatabase(accountInfo.pubkey, mintAddress, {
-        virtualSol: virtualSol,
-        virtualToken: virtualToken,
-        realSol: realSol,
-        realToken: realToken,
-        progress: bondingCurveProgress,
-        complete: data.complete || false
-      });
-    }
+    // Update pool in database using bonding curve address
+    // Note: Pump.fun bonding curve accounts don't contain mint address
+    this.updatePoolInDatabase(accountInfo.pubkey, {
+      virtualSol: virtualSol,
+      virtualToken: virtualToken,
+      realSol: realSol,
+      realToken: realToken,
+      progress: bondingCurveProgress,
+      complete: data.complete || false
+    });
   }
   
-  private async updatePoolInDatabase(bondingCurveAddress: string, mintAddress: string, data: {
+  private async updatePoolInDatabase(bondingCurveAddress: string, data: {
     virtualSol: any;
     virtualToken: any;  
     realSol: any;

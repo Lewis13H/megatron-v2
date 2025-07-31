@@ -101,7 +101,7 @@ export class PoolOperations {
   /**
    * Update pool reserves (for Pump.fun bonding curves)
    */
-  async updatePoolReserves(poolAddress: string, reserves: {
+  async updatePoolReserves(bondingCurveAddress: string, reserves: {
     virtual_sol_reserves?: string;
     virtual_token_reserves?: string;
     real_sol_reserves?: string;
@@ -124,12 +124,12 @@ export class PoolOperations {
       return;
     }
     
-    values.push(poolAddress);
+    values.push(bondingCurveAddress);
     
     const query = `
       UPDATE pools 
       SET ${updateFields.join(', ')}, updated_at = NOW()
-      WHERE pool_address = $${paramCount}
+      WHERE bonding_curve_address = $${paramCount}
     `;
     
     await this.pool.query(query, values);
@@ -176,10 +176,10 @@ export class PoolOperations {
   /**
    * Update pool status (e.g., when graduated)
    */
-  async updatePoolStatus(poolAddress: string, status: 'active' | 'graduated' | 'closed' | 'failed'): Promise<void> {
+  async updatePoolStatus(bondingCurveAddress: string, status: 'active' | 'graduated' | 'closed' | 'failed'): Promise<void> {
     await this.pool.query(
-      'UPDATE pools SET status = $1, updated_at = NOW() WHERE pool_address = $2',
-      [status, poolAddress]
+      'UPDATE pools SET status = $1, updated_at = NOW() WHERE bonding_curve_address = $2',
+      [status, bondingCurveAddress]
     );
   }
 
