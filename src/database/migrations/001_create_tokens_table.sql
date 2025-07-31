@@ -1,9 +1,10 @@
+-- Migration: 001_create_tokens_table
+-- Description: Creates the base tokens table for storing token metadata
+-- Dependencies: None (requires TimescaleDB extension)
+
 -- Enable required extensions
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS timescaledb;
-
--- Drop table if exists (for clean setup)
-DROP TABLE IF EXISTS tokens CASCADE;
 
 -- Create tokens table
 CREATE TABLE tokens (
@@ -44,13 +45,8 @@ $$ language 'plpgsql';
 CREATE TRIGGER update_tokens_updated_at BEFORE UPDATE
     ON tokens FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
--- Verify table creation
-SELECT 
-    column_name,
-    data_type,
-    character_maximum_length,
-    is_nullable,
-    column_default
-FROM information_schema.columns
-WHERE table_name = 'tokens'
-ORDER BY ordinal_position;
+-- Add comment to table
+COMMENT ON TABLE tokens IS 'Stores metadata for all tracked tokens from Pump.fun and Raydium Launchpad';
+COMMENT ON COLUMN tokens.mint_address IS 'Unique Solana mint address for the token';
+COMMENT ON COLUMN tokens.platform IS 'Platform where token was launched: pumpfun or raydium_launchpad';
+COMMENT ON COLUMN tokens.is_graduated IS 'Whether token has graduated from bonding curve to full DEX';

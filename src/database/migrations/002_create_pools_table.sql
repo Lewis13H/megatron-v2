@@ -1,5 +1,6 @@
--- Session 2: Pool Data & Relationships
--- Create pools table with support for both Pump.fun and Raydium Launchpad
+-- Migration: 002_create_pools_table
+-- Description: Creates pools table for tracking liquidity pools on both platforms
+-- Dependencies: 001_create_tokens_table (foreign key to tokens.id)
 
 CREATE TABLE pools (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -49,6 +50,8 @@ $$ language 'plpgsql';
 CREATE TRIGGER update_pools_updated_at BEFORE UPDATE ON pools
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
--- Add foreign key constraint to ensure data integrity
-ALTER TABLE pools ADD CONSTRAINT fk_pools_token 
-    FOREIGN KEY (token_id) REFERENCES tokens(id) ON DELETE CASCADE;
+-- Add table comment
+COMMENT ON TABLE pools IS 'Tracks liquidity pools for tokens on Pump.fun and Raydium Launchpad';
+COMMENT ON COLUMN pools.platform IS 'Platform hosting the pool: pumpfun or raydium_launchpad';
+COMMENT ON COLUMN pools.bonding_curve_progress IS 'Progress percentage for Pump.fun bonding curve (0-100)';
+COMMENT ON COLUMN pools.status IS 'Pool status: active, graduated, closed, or failed';

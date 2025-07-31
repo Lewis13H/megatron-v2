@@ -1,11 +1,6 @@
--- Session 3: Transaction Tables & Time-Series Setup
--- Create transaction hypertable for efficient time-series storage
-
--- Drop existing objects if they exist
-DROP TABLE IF EXISTS transactions CASCADE;
-DROP VIEW IF EXISTS recent_transactions CASCADE;
-DROP FUNCTION IF EXISTS get_transaction_volume_stats CASCADE;
-DROP FUNCTION IF EXISTS calculate_normalized_amounts CASCADE;
+-- Migration: 003_create_transactions_hypertable
+-- Description: Creates transactions hypertable for time-series transaction data
+-- Dependencies: 001_create_tokens_table, 002_create_pools_table
 
 -- Create transactions table
 CREATE TABLE transactions (
@@ -172,3 +167,8 @@ BEGIN
             RAISE NOTICE 'Retention policy could not be added: %', SQLERRM;
     END;
 END $$;
+
+-- Add table comments
+COMMENT ON TABLE transactions IS 'Time-series data for all token transactions (buys, sells, liquidity changes)';
+COMMENT ON COLUMN transactions.type IS 'Transaction type: buy, sell, add_liquidity, or remove_liquidity';
+COMMENT ON COLUMN transactions.price_per_token IS 'Calculated price in SOL per token at transaction time';
