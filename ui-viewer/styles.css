@@ -1,0 +1,292 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    background-color: #0a0a0a;
+    color: #e0e0e0;
+    line-height: 1.6;
+}
+
+.container {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+header {
+    background-color: #1a1a1a;
+    padding: 20px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+h1 {
+    font-size: 24px;
+    color: #4a9eff;
+}
+
+.header-info {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+}
+
+#last-update {
+    color: #888;
+    font-size: 14px;
+}
+
+#refresh-btn {
+    background-color: #4a9eff;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+#refresh-btn:hover {
+    background-color: #3a8eef;
+}
+
+.tabs {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+}
+
+.tab-btn {
+    background-color: #1a1a1a;
+    color: #888;
+    border: 1px solid #333;
+    padding: 10px 20px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: all 0.2s;
+}
+
+.tab-btn:hover {
+    background-color: #222;
+    color: #aaa;
+}
+
+.tab-btn.active {
+    background-color: #4a9eff;
+    color: white;
+    border-color: #4a9eff;
+}
+
+.tab-content {
+    display: none;
+}
+
+.tab-content.active {
+    display: block;
+}
+
+.filter-bar {
+    background-color: #1a1a1a;
+    padding: 15px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    display: flex;
+    gap: 15px;
+    align-items: center;
+}
+
+.filter-bar input {
+    flex: 1;
+    background-color: #0a0a0a;
+    border: 1px solid #333;
+    color: #e0e0e0;
+    padding: 8px 12px;
+    border-radius: 4px;
+    font-size: 14px;
+}
+
+.filter-bar select {
+    background-color: #0a0a0a;
+    border: 1px solid #333;
+    color: #e0e0e0;
+    padding: 8px 12px;
+    border-radius: 4px;
+    font-size: 14px;
+}
+
+.count {
+    color: #888;
+    font-size: 14px;
+}
+
+.data-grid {
+    background-color: #1a1a1a;
+    border-radius: 8px;
+    overflow-x: auto;
+}
+
+.loading {
+    padding: 40px;
+    text-align: center;
+    color: #888;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+th {
+    background-color: #0a0a0a;
+    padding: 12px;
+    text-align: left;
+    font-weight: 600;
+    color: #4a9eff;
+    border-bottom: 2px solid #333;
+    position: sticky;
+    top: 0;
+}
+
+td {
+    padding: 10px 12px;
+    border-bottom: 1px solid #222;
+}
+
+tr:hover {
+    background-color: #222;
+}
+
+.address {
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+    color: #888;
+}
+
+.clickable {
+    cursor: pointer;
+    color: #4a9eff;
+}
+
+.clickable:hover {
+    text-decoration: underline;
+}
+
+.symbol {
+    font-weight: 600;
+    color: #4a9eff;
+}
+
+.platform {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 3px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.platform.pumpfun {
+    background-color: #ff4a4a;
+    color: white;
+}
+
+.platform.raydium {
+    background-color: #4aff9e;
+    color: #0a0a0a;
+}
+
+.type {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 3px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.type.buy {
+    background-color: #4aff9e;
+    color: #0a0a0a;
+}
+
+.type.sell {
+    background-color: #ff4a4a;
+    color: white;
+}
+
+.amount {
+    font-family: 'Courier New', monospace;
+    text-align: right;
+}
+
+.summary-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 20px;
+}
+
+.summary-card {
+    background-color: #1a1a1a;
+    padding: 20px;
+    border-radius: 8px;
+}
+
+.summary-card h3 {
+    color: #4a9eff;
+    margin-bottom: 15px;
+    font-size: 18px;
+}
+
+.stats-content {
+    color: #e0e0e0;
+}
+
+.stat-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 8px 0;
+    border-bottom: 1px solid #333;
+}
+
+.stat-item:last-child {
+    border-bottom: none;
+}
+
+.stat-label {
+    color: #888;
+}
+
+.stat-value {
+    font-weight: 600;
+    color: #4a9eff;
+}
+
+@media (max-width: 768px) {
+    .filter-bar {
+        flex-wrap: wrap;
+    }
+    
+    .filter-bar input {
+        width: 100%;
+    }
+    
+    .header-info {
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 10px;
+    }
+    
+    table {
+        font-size: 12px;
+    }
+    
+    td, th {
+        padding: 6px;
+    }
+}

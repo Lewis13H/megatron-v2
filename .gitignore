@@ -45,3 +45,6 @@ coverage/
 
 # Shyft examples (separate repo)
 shyft-code-examples/
+
+# UI Viewer data exports
+ui-viewer/data/
