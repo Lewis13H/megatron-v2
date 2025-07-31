@@ -186,6 +186,24 @@ export async function savePumpfunToken(monitorOutput: any) {
     // Save pool if bonding curve address is available
     if (formattedData.bondingCurve) {
       try {
+        // Calculate initial price and bonding curve progress
+        let initialPrice: string | undefined;
+        let bondingCurveProgress: number | undefined;
+        
+        if (formattedData.virtualSolReserves && formattedData.virtualTokenReserves) {
+          // Calculate price: virtualSolReserves / virtualTokenReserves
+          const sol = Number(formattedData.virtualSolReserves) / 1_000_000_000; // convert lamports to SOL
+          const tokens = Number(formattedData.virtualTokenReserves) / Math.pow(10, 6);
+          initialPrice = (sol / tokens).toFixed(20).replace(/0+$/, '');
+          
+          // Calculate bonding curve progress
+          const INITIAL_VIRTUAL_TOKEN_RESERVES = 1_073_000_000 * Math.pow(10, 6);
+          const TOTAL_SELLABLE_TOKENS = 793_100_000 * Math.pow(10, 6);
+          const tokensSold = INITIAL_VIRTUAL_TOKEN_RESERVES - Number(formattedData.virtualTokenReserves);
+          const progress = (tokensSold / TOTAL_SELLABLE_TOKENS) * 100;
+          bondingCurveProgress = Math.min(Math.max(progress, 0), 100);
+        }
+        
         const poolData = {
           pool_address: formattedData.bondingCurve,
           base_mint: formattedData.Ca,
@@ -195,11 +213,14 @@ export async function savePumpfunToken(monitorOutput: any) {
           virtual_sol_reserves: formattedData.virtualSolReserves,
           virtual_token_reserves: formattedData.virtualTokenReserves,
           real_sol_reserves: formattedData.realSolReserves,
-          real_token_reserves: formattedData.realTokenReserves
+          real_token_reserves: formattedData.realTokenReserves,
+          latest_price: initialPrice,
+          bonding_curve_progress: bondingCurveProgress
         };
         
         const poolResult = await poolOps.insertPoolWithToken(poolData, formattedData.Ca);
         console.log(`💾 Saved Pump.fun pool to database: ${poolResult.pool_address.substring(0, 10)}...`);
+        console.log(`   Initial price: ${initialPrice || 'N/A'}, Progress: ${bondingCurveProgress !== undefined ? bondingCurveProgress.toFixed(2) + '%' : 'N/A'}`);
       } catch (poolError) {
         console.error('Failed to save pool (may already exist):', poolError);
         // Don't fail the whole operation if pool save fails

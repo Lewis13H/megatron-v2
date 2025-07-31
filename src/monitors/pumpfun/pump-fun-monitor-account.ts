@@ -225,23 +225,30 @@ export class PumpFunAccountMonitor {
     // Calculate price if reserves are available
     let price = 0;
     if (virtualToken && virtualSol) {
-      const tokenAmount = this.safeNumberConversion(virtualToken);
-      const solAmount = this.safeNumberConversion(virtualSol);
+      // Convert to actual amounts
+      const solAmount = this.safeNumberConversion(virtualSol) / 1e9; // lamports to SOL
+      const tokenAmount = this.safeNumberConversion(virtualToken) / 1e6; // tokens with 6 decimals
       if (tokenAmount > 0) {
         price = solAmount / tokenAmount;
       }
     }
     
-    // Calculate bonding curve progress based on SOL in the curve
-    // Pump.fun tokens graduate when ~75-76 SOL is in the bonding curve
-    const TARGET_SOL_FOR_GRADUATION = 75;  // SOL required to reach 100%
+    // Calculate bonding curve progress using token reserves
+    // This is the correct method based on Pump.fun's bonding curve mechanics
+    const INITIAL_VIRTUAL_TOKEN_RESERVES = 1_073_000_000 * 1e6;  // 1.073 billion tokens
+    const TOTAL_SELLABLE_TOKENS = 793_100_000 * 1e6;  // 793.1 million tokens can be sold
     let bondingCurveProgress = 0;
     
-    if (realSol) {
-      const realSolAmount = this.safeNumberConversion(realSol) / 1e9;  // Convert lamports to SOL
-      bondingCurveProgress = (realSolAmount / TARGET_SOL_FOR_GRADUATION) * 100;
+    if (virtualToken) {
+      const virtualTokenReserves = this.safeNumberConversion(virtualToken);
+      const tokensSold = INITIAL_VIRTUAL_TOKEN_RESERVES - virtualTokenReserves;
+      bondingCurveProgress = (tokensSold / TOTAL_SELLABLE_TOKENS) * 100;
       bondingCurveProgress = Math.max(0, Math.min(100, bondingCurveProgress)); // Clamp between 0-100
     }
+    
+    // Also calculate SOL in account for reference (this correlates with progress)
+    const accountSolBalance = Number(accountInfo.lamports) / 1e9;  // Convert lamports to SOL
+    const TARGET_SOL_FOR_GRADUATION = 84;  // Approximate SOL when bonding curve completes
 
 
     console.log("\n========== PUMP.FUN BONDING CURVE ==========");
@@ -287,18 +294,23 @@ export class PumpFunAccountMonitor {
         console.log(`  Note: Awaiting migration to Raydium`);
       }
     } else {
-      const remainingSol = TARGET_SOL_FOR_GRADUATION - solReservesDisplay;
-      console.log(`  SOL Remaining: ${remainingSol.toFixed(2)} SOL needed to graduate`);
+      // Calculate approximate remaining SOL based on progress
+      const expectedSolAtProgress = (bondingCurveProgress / 100) * TARGET_SOL_FOR_GRADUATION;
+      const remainingSol = TARGET_SOL_FOR_GRADUATION - expectedSolAtProgress;
+      console.log(`  SOL Remaining: ~${remainingSol.toFixed(2)} SOL needed to graduate`);
       console.log(`  Progress to graduation: ${bondingCurveProgress.toFixed(2)}%`);
+      console.log(`  Current SOL in curve: ${accountSolBalance.toFixed(2)} SOL`);
     }
     
     if (price > 0) {
-      const marketCapSol = price * (this.safeNumberConversion(tokenTotalSupply) / 1e6);
-      console.log(`\nPrice: ${price.toFixed(9)} SOL per token`);
+      // Pump.fun tokens have 1 billion total supply
+      const TOTAL_SUPPLY = 1_000_000_000;
+      const marketCapSol = price * TOTAL_SUPPLY;
+      console.log(`\nPrice: ${price.toFixed(20).replace(/0+$/, '')} SOL per token`);
       console.log(`Market Cap: ${marketCapSol.toFixed(4)} SOL`);
     }
     
-    console.log(`\nAccount Balance: ${Number(accountInfo.lamports) / 1e9} SOL`);
+    console.log(`\nAccount Balance: ${accountSolBalance.toFixed(6)} SOL`);
     
     if (accountInfo.slot) {
       console.log(`Slot: ${accountInfo.slot}`);
@@ -319,7 +331,8 @@ export class PumpFunAccountMonitor {
       realSol: realSol,
       realToken: realToken,
       progress: bondingCurveProgress,
-      complete: data.complete || false
+      complete: data.complete || false,
+      price: price > 0 ? price.toFixed(20).replace(/0+$/, '') : undefined
     });
   }
   
@@ -330,15 +343,23 @@ export class PumpFunAccountMonitor {
     realToken: any;
     progress: number;
     complete: boolean;
+    price?: string;
   }) {
     try {
-      await this.poolOperations.updatePoolReserves(bondingCurveAddress, {
+      const updateData: any = {
         virtual_sol_reserves: data.virtualSol?.toString(),
         virtual_token_reserves: data.virtualToken?.toString(),
         real_sol_reserves: data.realSol?.toString(),
         real_token_reserves: data.realToken?.toString(),
         bonding_curve_progress: data.progress
-      });
+      };
+      
+      // Add price if available
+      if (data.price) {
+        updateData.latest_price = data.price;
+      }
+      
+      await this.poolOperations.updatePoolReserves(bondingCurveAddress, updateData);
       
       // Update status if completed
       if (data.complete) {

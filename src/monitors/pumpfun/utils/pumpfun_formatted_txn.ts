@@ -26,6 +26,8 @@ export function parseSwapTransactionOutput(parsedInstruction: any) {
         virtual_token_reserves
     ); // Price in Sol, Multiply with Sol Price To get USD Price
      const formattedPrice = price.toFixed(20).replace(/0+$/, ''); // trims extra trailing zeros
+    
+    const bondingCurveProgress = calculateBondingCurveProgress(virtual_token_reserves);
 
     const output = {
         bonding_curve,
@@ -36,6 +38,7 @@ export function parseSwapTransactionOutput(parsedInstruction: any) {
         mint,
         creator,
         formattedPrice,
+        bondingCurveProgress,
         supply,
     };
 
@@ -49,4 +52,15 @@ function calculatePumpFunPrice(
     const sol = virtualSolReserves / 1_000_000_000; // convert lamports to SOL
     const tokens = virtualTokenReserves / Math.pow(10, 6);
     return sol / tokens;
+}
+
+function calculateBondingCurveProgress(virtualTokenReserves: number): number {
+    const INITIAL_VIRTUAL_TOKEN_RESERVES = 1_073_000_000 * Math.pow(10, 6);
+    const TOTAL_SELLABLE_TOKENS = 793_100_000 * Math.pow(10, 6);
+    
+    const tokensSold = INITIAL_VIRTUAL_TOKEN_RESERVES - virtualTokenReserves;
+    const progress = (tokensSold / TOTAL_SELLABLE_TOKENS) * 100;
+    
+    // Cap progress at 100% in case of rounding errors
+    return Math.min(Math.max(progress, 0), 100);
 }

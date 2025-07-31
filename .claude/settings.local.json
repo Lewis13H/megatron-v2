@@ -56,7 +56,8 @@
       "Bash(explorer:*)",
       "Bash(npx http-server:*)",
       "Bash(git restore:*)",
-      "Bash(start index.html)"
+      "Bash(start index.html)",
+      "WebFetch(domain:solana.stackexchange.com)"
     ],
     "deny": []
   }

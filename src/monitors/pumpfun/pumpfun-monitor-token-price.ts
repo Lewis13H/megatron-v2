@@ -89,7 +89,8 @@ async function handleStream(client: Client, args: SubscribeRequest) {
       console.log(
         new Date(),
         ":",
-        `New transaction https://translator.shyft.to/tx/${txn.transaction.signatures[0]} \n`,
+        `New transaction https://translator.shyft.to/tx/${txn.transaction.signatures[0]}`,
+        `\n📊 Bonding Curve Progress: ${formattedSwapTxn.bondingCurveProgress.toFixed(2)}%\n`,
         JSON.stringify(formattedSwapTxn, null, 2) + "\n"
       );
       
@@ -104,16 +105,18 @@ async function handleStream(client: Client, args: SubscribeRequest) {
             real_sol_reserves = $3,
             real_token_reserves = $4,
             latest_price = $5,
+            bonding_curve_progress = $6,
             updated_at = NOW()
-          WHERE bonding_curve_address = $6
+          WHERE bonding_curve_address = $7
         `;
         
         await dbPool.query(updateQuery, [
           formattedSwapTxn.virtual_sol_reserves.toString(),
           formattedSwapTxn.virtual_token_reserves.toString(),
-          formattedSwapTxn.real_sol_reserves.toString(),
-          formattedSwapTxn.real_token_reserves.toString(),
+          formattedSwapTxn.real_sol_reserves?.toString() || '0',
+          formattedSwapTxn.real_token_reserves?.toString() || '0',
           formattedSwapTxn.formattedPrice,
+          formattedSwapTxn.bondingCurveProgress.toFixed(2),
           formattedSwapTxn.bonding_curve
         ]);
         

@@ -30,8 +30,8 @@ npm run pfmonitor:account
 # Monitor Pump.fun transactions
 npm run pfmonitor:transaction
 
-# Monitor Pump.fun bonding curves
-npm run pfmonitor:bonding
+# Monitor Pump.fun token prices (real-time price updates)
+npm run pfmonitor:price
 
 # Monitor token graduations
 npm run graduation:monitor
@@ -99,7 +99,11 @@ DB_PASSWORD=your_database_password
 ### Core Monitoring System
 The main application logic is in `src/monitors/` with separate monitors for different platforms:
 - **Raydium Launchpad**: Monitors new token launches, pool creation, and trading activity
-- **Pump.fun**: Monitors bonding curve tokens, graduations, and trading patterns
+- **Pump.fun**: Comprehensive monitoring suite with 4 specialized monitors:
+  - **Token Mint Monitor**: Captures new token launches with metadata
+  - **Price Monitor**: Real-time price updates on every buy/sell transaction
+  - **Account Monitor**: Tracks bonding curve state and reserves
+  - **Transaction Monitor**: Records all transaction types for analysis
 - **Graduation**: Tracks token migrations from Pump.fun to other platforms
 
 ### Key Components
@@ -131,8 +135,12 @@ Each monitor follows this pattern:
 1. Stream data via gRPC subscription
 2. Parse using Anchor IDLs and custom parsers
 3. Format using utility functions
-4. Save to database
-5. Output structured data for analysis
+4. Calculate key metrics:
+   - Bonding curve progress: `((1,073,000,000 × 10^6 - virtualTokenReserves) × 100) / (793,100,000 × 10^6)`
+   - Price: `(virtualSolReserves / 1e9) / (virtualTokenReserves / 1e6)`
+   - Market cap: `1,000,000,000 × price` (1 billion token supply)
+5. Save to database with calculated values
+6. Output structured data for analysis
 
 ## Database Schema
 
@@ -150,7 +158,29 @@ import { savePumpfunToken } from '../../database/monitor-integration';
 import { saveRaydiumToken } from '../../database/monitor-integration';
 ```
 
+### Pump.fun Bonding Curve Mechanics
+- **Initial Virtual Token Reserves**: 1,073,000,000 tokens (1.073 billion)
+- **Total Sellable Tokens**: 793,100,000 tokens (793.1 million)
+- **Reserved for Migration**: 206,900,000 tokens (206.9 million)
+- **Graduation Threshold**: 84 SOL collected in bonding curve
+- **Progress Calculation**: Based on tokens sold from virtual reserves
+
 ## Important Implementation Details
+
+### Key Calculations
+
+#### Bonding Curve Progress
+```typescript
+const INITIAL_VIRTUAL_TOKEN_RESERVES = 1_073_000_000 * 1e6;
+const TOTAL_SELLABLE_TOKENS = 793_100_000 * 1e6;
+const tokensSold = INITIAL_VIRTUAL_TOKEN_RESERVES - virtualTokenReserves;
+const progress = (tokensSold / TOTAL_SELLABLE_TOKENS) * 100;
+```
+
+#### Token Price
+```typescript
+const priceInSol = (virtualSolReserves / 1e9) / (virtualTokenReserves / 1e6);
+```
 
 ### TypeScript Configuration
 - Target: ES2020
@@ -173,14 +203,20 @@ import { saveRaydiumToken } from '../../database/monitor-integration';
 
 ### Completed
 - ✅ Raydium Launchpad new token mint monitor
-- ✅ Pump.fun monitor implementation
+- ✅ Pump.fun comprehensive monitoring suite:
+  - ✅ Token mint monitor with initial price/progress calculation
+  - ✅ Real-time price monitor tracking all trades
+  - ✅ Account monitor with correct bonding curve progress
+  - ✅ Transaction monitor for complete trade history
+- ✅ Bonding curve progress calculation (token-based method)
+- ✅ Accurate price calculations with proper decimal handling
 - ✅ Transaction and account monitoring infrastructure
 - ✅ Database integration with PostgreSQL + TimescaleDB
-- ✅ Pool and transaction data storage
+- ✅ Pool and transaction data storage with latest_price field
 - ✅ Price aggregates and continuous views (Session 4)
 - ✅ Real-time price tracking with 1-minute candles
 - ✅ Volume statistics and high-volume token detection
-- ✅ Basic event parsing and formatting
+- ✅ UI Viewer with real-time dashboard
 - ✅ gRPC streaming setup
 
 ### In Progress
