@@ -33,6 +33,18 @@ interface SubscribeRequest {
   ping?: SubscribeRequestPing | undefined;
 }
 
+interface TokenMetadata {
+  name: string;
+  symbol: string;
+  description?: string;
+  image?: string;
+  twitter?: string;
+  telegram?: string;
+  website?: string;
+  showName?: boolean;
+  [key: string]: any;
+}
+
 interface CreateTokenData {
   name: string;
   symbol: string;
@@ -48,6 +60,7 @@ interface CreateTokenData {
   timestamp: string;
   signature: string;
   slot?: number;
+  offChainMetadata?: TokenMetadata;
 }
 
 const TXN_FORMATTER = new TransactionFormatter();
@@ -69,9 +82,50 @@ PUMP_FUN_EVENT_PARSER.addParserFromIdl(
 const dbPool = getDbPool();
 const poolOperations = new PoolOperations(dbPool);
 
+// Function to fetch metadata from URI
+async function fetchTokenMetadata(uri: string): Promise<TokenMetadata | null> {
+  try {
+    // Handle IPFS URIs
+    let fetchUrl = uri;
+    if (uri.startsWith('ipfs://')) {
+      // Use a public IPFS gateway
+      fetchUrl = uri.replace('ipfs://', 'https://ipfs.io/ipfs/');
+    } else if (uri.includes('/ipfs/')) {
+      // Already formatted as gateway URL, try alternative gateways if needed
+      fetchUrl = uri.replace('https://ipfs.io/', 'https://gateway.pinata.cloud/');
+    }
+    
+    console.log(`📡 Fetching metadata from: ${fetchUrl}`);
+    
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+    
+    const response = await fetch(fetchUrl, {
+      signal: controller.signal,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+      }
+    });
+    
+    clearTimeout(timeoutId);
+    
+    if (!response.ok) {
+      console.error(`❌ Failed to fetch metadata: ${response.status} ${response.statusText}`);
+      return null;
+    }
+    
+    const metadata = await response.json() as TokenMetadata;
+    console.log(`✅ Successfully fetched metadata`);
+    return metadata;
+  } catch (error) {
+    console.error(`❌ Error fetching metadata:`, error);
+    return null;
+  }
+}
+
 async function handleStream(client: Client, args: SubscribeRequest) {
-  console.log("Starting Pump.fun New Token Mint Monitor...")
-  console.log("Monitoring for new token creation events...\n");
+  console.log("Starting Pump.fun New Token Mint Monitor V2...")
+  console.log("Monitoring for new token creation events with metadata extraction...\n");
   
   const stream = await client.subscribe();
 
@@ -155,10 +209,12 @@ async function handleStream(client: Client, args: SubscribeRequest) {
         slot: data.slot,
       };
       
-      // Debug log if bonding curve is still empty
-      if (!tokenData.bondingCurve) {
-        console.log("Debug - Instruction:", JSON.stringify(createInstruction, null, 2));
-        console.log("Debug - Events:", JSON.stringify(parsedTxn.events, null, 2));
+      // Fetch off-chain metadata
+      if (tokenData.uri) {
+        const offChainMetadata = await fetchTokenMetadata(tokenData.uri);
+        if (offChainMetadata) {
+          tokenData.offChainMetadata = offChainMetadata;
+        }
       }
       
       console.log(
@@ -191,12 +247,13 @@ async function handleStream(client: Client, args: SubscribeRequest) {
             global: tokenData.global,
             mplTokenMetadata: tokenData.mplTokenMetadata,
             metadataAccount: tokenData.metadata,
-            slot: tokenData.slot
+            slot: tokenData.slot,
+            offChainMetadata: tokenData.offChainMetadata
           }
         };
         
         await savePumpfunToken(saveData);
-        console.log(`💾 New token saved to database`);
+        console.log(`💾 New token saved to database with metadata`);
       } catch (error) {
         console.error(`❌ Failed to save token:`, error);
       }
@@ -225,9 +282,10 @@ async function handleStream(client: Client, args: SubscribeRequest) {
 }
 
 async function subscribeCommand(client: Client, args: SubscribeRequest) {
-  console.log("Pump.fun New Token Mint Monitor");
-  console.log("================================");
+  console.log("Pump.fun New Token Mint Monitor V2");
+  console.log("===================================");
   console.log("Program ID:", PUMP_FUN_PROGRAM_ID.toBase58());
+  console.log("Features: On-chain + Off-chain metadata extraction");
   console.log("");
   
   while (true) {

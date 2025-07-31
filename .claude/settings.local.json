@@ -45,7 +45,13 @@
       "Bash(PGPASSWORD=password123 psql -h localhost -p 5433 -U postgres -d megatron_v2 -c \"\\di idx_pools*\")",
       "Bash(timeout 30 npm run rlmonitor:trans)",
       "Bash(PGPASSWORD=password123 psql -h localhost -p 5433 -U postgres -d megatron_v2 -f src/database/test-session2-complete.sql)",
-      "Bash(timeout 5 npm run pfmonitor:account)"
+      "Bash(timeout 5 npm run pfmonitor:account)",
+      "Bash(del srcmonitorspumpfunpumpfun-monitor-new-token-mint.ts)",
+      "Bash(taskkill:*)",
+      "WebFetch(domain:extremelysunnyyk.medium.com)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:docs.raydium.io)",
+      "Bash(del srcmonitorspumpfunpumpfun-monitor-new-token-mint.ts)"
     ],
     "deny": []
   }

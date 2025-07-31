@@ -96,6 +96,8 @@ export async function saveRaydiumToken(monitorOutput: any) {
     
     const tokenData: TokenData = {
       mint_address: formattedData.baseTokenMint,
+      symbol: monitorOutput.tokenMetadata?.symbol || monitorOutput.tokenMetadata?.onChainSymbol,
+      name: monitorOutput.tokenMetadata?.name || monitorOutput.tokenMetadata?.onChainName,
       platform: 'raydium_launchpad',
       creation_signature: formattedData.signature,
       creation_timestamp: new Date(formattedData.timestamp),
@@ -104,7 +106,8 @@ export async function saveRaydiumToken(monitorOutput: any) {
         pool_state: formattedData.poolState,
         quote_token_mint: formattedData.quoteTokenMint,
         initial_price: formattedData.initialPrice,
-        initial_liquidity: formattedData.initialLiquidity
+        initial_liquidity: formattedData.initialLiquidity,
+        ...(monitorOutput.tokenMetadata || {})
       }
     };
     
@@ -161,7 +164,8 @@ export async function savePumpfunToken(monitorOutput: any) {
       global: monitorOutput.global || monitorOutput.metadata?.global,
       mplTokenMetadata: monitorOutput.mplTokenMetadata || monitorOutput.metadata?.mplTokenMetadata,
       metadataAccount: monitorOutput.metadata?.metadataAccount || monitorOutput.metadata?.metadata,
-      slot: monitorOutput.slot || monitorOutput.metadata?.slot
+      slot: monitorOutput.slot || monitorOutput.metadata?.slot,
+      offChainMetadata: monitorOutput.metadata?.offChainMetadata
     };
     
     const tokenData: TokenData = {
