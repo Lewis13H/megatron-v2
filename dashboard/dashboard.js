@@ -64,7 +64,9 @@ class Dashboard {
             <a href="https://dexscreener.com/solana/${token.address}" target="_blank" rel="noopener noreferrer" class="platform-link">
               ${token.platform === 'pumpfun' 
                 ? '<img src="https://pump.fun/_next/image?url=%2Flogo.png&w=48&q=75" alt="Pump.fun" class="platform-icon" style="width: 20px; height: 20px;">'
-                : '<img src="https://letsbonk.fun/logos/bonk_fun.png" alt="Raydium" class="platform-icon" style="width: 20px; height: 20px;">'
+                : token.platform === 'raydium_launchpad'
+                ? '<img src="raydium-launchpad-icon.png" alt="Raydium Launchpad" class="platform-icon" style="width: 20px; height: 20px;">'
+                : '<img src="raydium-launchpad-icon.png" alt="Unknown" class="platform-icon" style="width: 20px; height: 20px;">'
               }
             </a>
           </div>
