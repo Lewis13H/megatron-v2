@@ -64,8 +64,8 @@ class Dashboard {
           </div>
         </td>
         <td class="price">
-          <div class="usd-value">$${this.formatPrice(token.price.usd)}</div>
-          <div class="sol-value">${this.formatPrice(token.price.sol)} SOL</div>
+          <div class="usd-value">${this.formatPrice(token.price.usd)}</div>
+          <div class="sol-value">${this.formatPriceWithoutDollar(token.price.sol)} SOL</div>
         </td>
         <td class="mcap">
           <div class="usd-value">${this.formatMarketCap(token.marketCap.usd)}</div>
@@ -93,14 +93,39 @@ class Dashboard {
   }
 
   formatPrice(price) {
+    return '$' + this.formatPriceWithoutDollar(price);
+  }
+
+  formatPriceWithoutDollar(price) {
     // Convert to number if it's a string
     const num = typeof price === 'string' ? parseFloat(price) : price;
     
-    if (isNaN(num) || num === null || num === undefined) return '0';
+    if (isNaN(num) || num === null || num === undefined || num === 0) return '0';
     
-    if (num < 0.00001) return num.toExponential(2);
-    if (num < 0.01) return num.toFixed(6);
+    // For very small numbers, use subscript notation
+    if (num < 0.01) {
+      const str = num.toFixed(20); // Get enough decimal places
+      const match = str.match(/^0\.0*[1-9]/); // Find the first non-zero digit
+      
+      if (match) {
+        const zerosCount = match[0].length - 2 - 1; // Subtract "0." and the non-zero digit
+        const significantPart = num.toFixed(zerosCount + 4).slice(2 + zerosCount); // Get 4 significant digits
+        
+        if (zerosCount > 0) {
+          // Use subscript numbers for zero count
+          const subscriptNumbers = '₀₁₂₃₄₅₆₇₈₉';
+          const subscriptZeros = zerosCount.toString().split('').map(d => subscriptNumbers[parseInt(d)]).join('');
+          return `0.${subscriptZeros}${significantPart}`;
+        } else {
+          return num.toFixed(4);
+        }
+      }
+    }
+    
+    // For numbers >= 0.01
     if (num < 1) return num.toFixed(4);
+    if (num < 10) return num.toFixed(3);
+    if (num < 100) return num.toFixed(2);
     return num.toFixed(2);
   }
 

@@ -33,6 +33,16 @@ router.get('/test', async (req, res) => {
 // Get top tokens with scores
 router.get('/tokens', async (req, res) => {
   try {
+    // First get the latest SOL price
+    const pool = getDbPool();
+    const solPriceResult = await pool.query(`
+      SELECT price_usd 
+      FROM sol_usd_prices 
+      ORDER BY price_time DESC 
+      LIMIT 1
+    `);
+    const solPriceUsd = solPriceResult.rows[0]?.price_usd || 200; // Default to $200 if no price
+
     // Query to get real price data from pools table
     const query = `
       SELECT 
@@ -43,16 +53,16 @@ router.get('/tokens', async (req, res) => {
         t.created_at as token_created_at,
         COALESCE(p.latest_price_usd, p.initial_price_usd, 0) as price_usd,
         COALESCE(p.latest_price, p.initial_price, 0) as price_sol,
-        FLOOR(RANDOM() * 999 + 1)::int as total_score,
-        FLOOR(RANDOM() * 333 + 1)::int as technical_score,
-        FLOOR(RANDOM() * 333 + 1)::int as holder_score,
-        FLOOR(RANDOM() * 333 + 1)::int as social_score,
-        FLOOR(RANDOM() * 50000 + 1000)::int as txns_24h,
-        FLOOR(RANDOM() * 10000 + 100)::int as makers_24h,
+        0 as total_score,
+        0 as technical_score,
+        0 as holder_score,
+        0 as social_score,
+        0 as txns_24h,
+        0 as makers_24h,
         EXTRACT(epoch FROM (NOW() - t.created_at)) as age_seconds,
-        1000 as volume_24h_usd,
-        COALESCE(p.virtual_sol_reserves::numeric / 1e9, 0) as reserves_sol,
-        100000 as liquidity_usd,
+        0 as volume_24h_usd,
+        0 as reserves_sol,
+        0 as liquidity_usd,
         p.bonding_curve_progress as bonding_curve_progress
       FROM tokens t
       LEFT JOIN pools p ON t.id = p.token_id
@@ -62,43 +72,47 @@ router.get('/tokens', async (req, res) => {
       LIMIT 50
     `;
 
-    const pool = getDbPool();
     const result = await pool.query(query);
     
     // Format the data for frontend
-    const tokens = result.rows.map((row: any, index: number) => ({
-      rank: index + 1,
-      address: row.address,
-      symbol: row.symbol,
-      name: row.name,
-      image: row.image_uri || null,
-      price: {
-        usd: row.price_usd || 0,
-        sol: row.price_sol || 0
-      },
-      marketCap: {
-        usd: (row.price_usd || 0) * 1_000_000_000, // 1B supply
-        sol: (row.price_sol || 0) * 1_000_000_000
-      },
-      scores: {
-        total: row.total_score,
-        technical: row.technical_score,
-        holder: row.holder_score,
-        social: row.social_score
-      },
-      age: formatAge(row.age_seconds),
-      txns24h: row.txns_24h || 0,
-      volume24h: {
-        usd: row.volume_24h_usd || 0,
-        sol: (row.volume_24h_usd || 0) * 0.005 // Convert to SOL
-      },
-      makers24h: row.makers_24h || 0,
-      liquidity: {
-        usd: row.liquidity_usd || 0,
-        sol: row.reserves_sol || 0
-      },
-      platform: row.bonding_curve_progress !== null ? 'pumpfun' : 'raydium'
-    }));
+    const tokens = result.rows.map((row: any, index: number) => {
+      const priceSol = parseFloat(row.price_sol) || 0;
+      const priceUsd = priceSol * parseFloat(solPriceUsd);
+      
+      return {
+        rank: index + 1,
+        address: row.address,
+        symbol: row.symbol,
+        name: row.name,
+        image: row.image_uri || null,
+        price: {
+          usd: priceUsd,
+          sol: priceSol
+        },
+        marketCap: {
+          usd: priceUsd * 1_000_000_000, // 1B supply
+          sol: priceSol * 1_000_000_000
+        },
+        scores: {
+          total: row.total_score,
+          technical: row.technical_score,
+          holder: row.holder_score,
+          social: row.social_score
+        },
+        age: formatAge(row.age_seconds),
+        txns24h: row.txns_24h || 0,
+        volume24h: {
+          usd: 0,
+          sol: 0
+        },
+        makers24h: row.makers_24h || 0,
+        liquidity: {
+          usd: 0,
+          sol: 0
+        },
+        platform: row.bonding_curve_progress !== null ? 'pumpfun' : 'raydium'
+      };
+    });
 
     res.json({ tokens, timestamp: new Date() });
   } catch (error) {
