@@ -59,6 +59,8 @@ body {
 .progress {
     font-weight: 600;
     text-align: center;
+    position: relative;
+    padding: 2px;
 }
 
 .progress.no-progress {
@@ -66,18 +68,52 @@ body {
     font-style: italic;
 }
 
-/* Progress color classes - gradient from red to green */
-.progress.progress-0 { color: #ff0000; }
-.progress.progress-10 { color: #ff1a00; }
-.progress.progress-20 { color: #ff3300; }
-.progress.progress-30 { color: #ff4d00; }
-.progress.progress-40 { color: #ff6600; }
-.progress.progress-50 { color: #ff8000; }
-.progress.progress-60 { color: #ff9900; }
-.progress.progress-70 { color: #ffb300; }
-.progress.progress-80 { color: #ffcc00; }
-.progress.progress-90 { color: #ccff00; }
-.progress.progress-100 { color: #00ff00; }
+/* Progress bar container */
+.progress-bar-container {
+    position: relative;
+    width: 100%;
+    height: 20px;
+    background-color: rgba(255, 255, 255, 0.05);
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+/* Progress bar fill */
+.progress-bar-fill {
+    position: absolute;
+    left: 0;
+    top: 0;
+    height: 100%;
+    transition: width 0.3s ease;
+    border-radius: 10px;
+}
+
+/* Progress bar fill colors - gradient from red to green */
+.progress-bar-fill.progress-0 { background-color: #ff0000; }
+.progress-bar-fill.progress-10 { background-color: #ff1a00; }
+.progress-bar-fill.progress-20 { background-color: #ff3300; }
+.progress-bar-fill.progress-30 { background-color: #ff4d00; }
+.progress-bar-fill.progress-40 { background-color: #ff6600; }
+.progress-bar-fill.progress-50 { background-color: #ff8000; }
+.progress-bar-fill.progress-60 { background-color: #ff9900; }
+.progress-bar-fill.progress-70 { background-color: #ffb300; }
+.progress-bar-fill.progress-80 { background-color: #ffcc00; }
+.progress-bar-fill.progress-90 { background-color: #ccff00; }
+.progress-bar-fill.progress-100 { background-color: #00ff00; }
+
+/* Progress text */
+.progress-text {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: #ffffff;
+    font-weight: 600;
+    font-size: 11px;
+    text-shadow: 0 0 2px rgba(0, 0, 0, 0.8);
+    z-index: 1;
+    white-space: nowrap;
+}
 
 /* Header styling */
 .header {
@@ -352,6 +388,7 @@ body {
 .col-token { width: 300px; min-width: 300px; }
 .col-price { width: 100px; min-width: 100px; }
 .col-mcap { width: 90px; min-width: 90px; }
+.col-progress { width: 70px; min-width: 70px; }
 .col-5m, .col-1h, .col-6h, .col-24h { width: 80px; min-width: 80px; }
 .col-age { width: 60px; min-width: 60px; }
 .col-txns { width: 80px; min-width: 80px; }
@@ -368,7 +405,7 @@ body {
     text-align: right;
 }
 
-.col-5m, .col-1h, .col-6h, .col-24h {
+.col-progress, .col-5m, .col-1h, .col-6h, .col-24h {
     text-align: center;
 }
 

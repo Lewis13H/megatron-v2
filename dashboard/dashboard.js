@@ -80,9 +80,9 @@ class Dashboard {
         </td>
         <td class="mcap">
           <div class="usd-value">${this.formatMarketCap(token.marketCap.usd)}</div>
-          <div class="sol-value">${this.formatNumber(token.marketCap.sol)} SOL</div>
+          <div class="sol-value">${this.formatMarketCapSol(token.marketCap.sol)} SOL</div>
         </td>
-        <td class="progress ${this.getProgressColorClass(token.bondingCurveProgress)}">${this.formatProgress(token.bondingCurveProgress)}</td>
+        <td class="progress">${this.renderProgressBar(token.bondingCurveProgress)}</td>
         <td class="score ${this.getScoreClass(token.scores.total, 999)}">${token.scores.total}</td>
         <td class="score ${this.getScoreClass(token.scores.technical, 333)}">${token.scores.technical}</td>
         <td class="score ${this.getScoreClass(token.scores.holder, 333)}">${token.scores.holder}</td>
@@ -114,6 +114,22 @@ class Dashboard {
     
     // Return a data attribute for dynamic color calculation
     return `progress-${Math.floor(progress / 10) * 10}`;
+  }
+
+  renderProgressBar(progress) {
+    if (progress === null || progress === undefined) {
+      return '<span class="no-progress">N/A</span>';
+    }
+    
+    const progressClass = this.getProgressColorClass(progress);
+    const progressText = this.formatProgress(progress);
+    
+    return `
+      <div class="progress-bar-container">
+        <div class="progress-bar-fill ${progressClass}" style="width: ${progress}%"></div>
+        <span class="progress-text">${progressText}</span>
+      </div>
+    `;
   }
 
   formatPrice(price) {
@@ -159,8 +175,18 @@ class Dashboard {
     
     if (num >= 1e9) return `$${(num / 1e9).toFixed(1)}B`;
     if (num >= 1e6) return `$${(num / 1e6).toFixed(1)}M`;
-    if (num >= 1e3) return `$${(num / 1e3).toFixed(1)}K`;
+    if (num >= 1e3) return `$${(num / 1e3).toFixed(3)}K`;
     return `$${num.toFixed(0)}`;
+  }
+
+  formatMarketCapSol(value) {
+    const num = typeof value === 'string' ? parseFloat(value) : value;
+    if (isNaN(num) || num === null || num === undefined) return '0.00';
+    
+    if (num >= 1e9) return `${(num / 1e9).toFixed(2)}B`;
+    if (num >= 1e6) return `${(num / 1e6).toFixed(2)}M`;
+    if (num >= 1e3) return `${(num / 1e3).toFixed(2)}K`;
+    return num.toFixed(2);
   }
 
   formatNumber(num) {
