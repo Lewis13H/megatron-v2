@@ -191,6 +191,21 @@ body {
     color: #000;
 }
 
+.platform-icon {
+    border-radius: 4px;
+    object-fit: contain;
+}
+
+.platform-link {
+    display: inline-flex;
+    text-decoration: none;
+    transition: opacity 0.2s;
+}
+
+.platform-link:hover {
+    opacity: 0.8;
+}
+
 .chain-icon.pump {
     background-color: #27272a;
 }

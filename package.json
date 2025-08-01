@@ -14,10 +14,13 @@
     "pfmonitor:price": "npx ts-node src/monitors/pumpfun/pumpfun-monitor-token-price.ts",
     "graduation:monitor": "npx ts-node src/monitors/graduation/graduation-monitor.ts",
     "build": "npx tsc",
-    "sol-price:updater": "npx ts-node src/workers/sol-price-updater.ts",
-    "backfill:historical": "npx ts-node src/workers/historical-price-backfill.ts",
+    "sol-price:updater": "npx ts-node src/services/price-v2/price-updater.ts",
+    "sol-price:migrate": "npx ts-node src/services/price-v2/migrate-to-v2.ts",
     "db:truncate": "npx ts-node src/database/scripts/truncate-all-data.ts",
-    "dashboard:serve": "npx ts-node src/api/server.ts"
+    "dashboard:serve": "npx ts-node src/api/server.ts",
+    "dashboard:serve:fresh": "node -r ts-node/register/transpile-only src/api/server.ts",
+    "dashboard:build": "npx tsc src/api/server.ts src/api/dashboard-api.ts --outDir dist --skipLibCheck --allowJs --esModuleInterop --resolveJsonModule",
+    "dashboard:serve:compiled": "node dist/api/server.js"
   },
   "dependencies": {
     "@coral-xyz/anchor": "^0.30.1",

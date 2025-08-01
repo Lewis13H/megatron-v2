@@ -33,7 +33,7 @@ router.get('/test', async (req, res) => {
 // Get top tokens with scores
 router.get('/tokens', async (req, res) => {
   try {
-    // Much simpler query without complex joins
+    // Query to get real price data from pools table
     const query = `
       SELECT 
         t.mint_address as address,
@@ -41,8 +41,8 @@ router.get('/tokens', async (req, res) => {
         t.name,
         t.metadata->>'image' as image_uri,
         t.created_at as token_created_at,
-        0.001 as price_usd,
-        0.000005 as price_sol,
+        COALESCE(p.latest_price_usd, p.initial_price_usd, 0) as price_usd,
+        COALESCE(p.latest_price, p.initial_price, 0) as price_sol,
         FLOOR(RANDOM() * 999 + 1)::int as total_score,
         FLOOR(RANDOM() * 333 + 1)::int as technical_score,
         FLOOR(RANDOM() * 333 + 1)::int as holder_score,
@@ -51,10 +51,11 @@ router.get('/tokens', async (req, res) => {
         FLOOR(RANDOM() * 10000 + 100)::int as makers_24h,
         EXTRACT(epoch FROM (NOW() - t.created_at)) as age_seconds,
         1000 as volume_24h_usd,
-        0 as reserves_sol,
+        COALESCE(p.virtual_sol_reserves::numeric / 1e9, 0) as reserves_sol,
         100000 as liquidity_usd,
-        0 as bonding_curve_progress
+        p.bonding_curve_progress as bonding_curve_progress
       FROM tokens t
+      LEFT JOIN pools p ON t.id = p.token_id
       WHERE t.created_at > NOW() - INTERVAL '30 days'
         AND t.symbol IS NOT NULL
       ORDER BY t.created_at DESC

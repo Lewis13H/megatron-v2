@@ -50,10 +50,12 @@ class Dashboard {
         <td class="token-info">
           <span class="rank">#${token.rank}</span>
           <div class="chain-icons">
-            <span class="chain-icon solana">⚡</span>
-            <span class="chain-icon ${token.platform === 'pumpfun' ? 'pump' : 'raydium'}">
-              ${token.platform === 'pumpfun' ? '🎯' : '🌊'}
-            </span>
+            <a href="https://dexscreener.com/solana/${token.address}" target="_blank" rel="noopener noreferrer" class="platform-link">
+              ${token.platform === 'pumpfun' 
+                ? '<img src="https://pump.fun/_next/image?url=%2Flogo.png&w=48&q=75" alt="Pump.fun" class="platform-icon" style="width: 20px; height: 20px;">'
+                : '<img src="https://letsbonk.fun/logos/bonk_fun.png" alt="Raydium" class="platform-icon" style="width: 20px; height: 20px;">'
+              }
+            </a>
           </div>
           <img src="${this.getImageUrl(token.image)}" alt="Token" class="token-icon" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'32\\' height=\\'32\\' fill=\\'%23333\\'%3E%3Crect width=\\'32\\' height=\\'32\\' rx=\\'16\\'/%3E%3C/svg%3E'">
           <div class="token-details">
