@@ -4,6 +4,10 @@ class Dashboard {
     this.apiUrl = 'http://localhost:3000/api'; // Update with your API URL
     this.updateInterval = 5000; // 5 seconds
     this.isConnected = false;
+    this.currentPage = 1;
+    this.tokensPerPage = 50;
+    this.totalTokens = 0;
+    this.allTokens = [];
   }
 
   async init() {
@@ -19,7 +23,10 @@ class Dashboard {
       const data = await response.json();
       
       if (data.tokens) {
-        this.renderTokens(data.tokens);
+        this.allTokens = data.tokens;
+        this.totalTokens = data.tokens.length;
+        this.renderTokens();
+        this.renderPagination();
       }
     } catch (error) {
       console.error('Failed to fetch tokens:', error);
@@ -40,11 +47,15 @@ class Dashboard {
     }
   }
 
-  renderTokens(tokens) {
+  renderTokens() {
     const tbody = document.querySelector('.token-table tbody');
     tbody.innerHTML = '';
 
-    tokens.forEach(token => {
+    const startIndex = (this.currentPage - 1) * this.tokensPerPage;
+    const endIndex = startIndex + this.tokensPerPage;
+    const paginatedTokens = this.allTokens.slice(startIndex, endIndex);
+
+    paginatedTokens.forEach(token => {
       const row = document.createElement('tr');
       row.innerHTML = `
         <td class="token-info">
@@ -71,6 +82,7 @@ class Dashboard {
           <div class="usd-value">${this.formatMarketCap(token.marketCap.usd)}</div>
           <div class="sol-value">${this.formatNumber(token.marketCap.sol)} SOL</div>
         </td>
+        <td class="progress ${this.getProgressColorClass(token.bondingCurveProgress)}">${this.formatProgress(token.bondingCurveProgress)}</td>
         <td class="score ${this.getScoreClass(token.scores.total, 999)}">${token.scores.total}</td>
         <td class="score ${this.getScoreClass(token.scores.technical, 333)}">${token.scores.technical}</td>
         <td class="score ${this.getScoreClass(token.scores.holder, 333)}">${token.scores.holder}</td>
@@ -90,6 +102,18 @@ class Dashboard {
     if (percentage >= 75) return 'high';
     if (percentage >= 50) return 'medium';
     return 'low';
+  }
+
+  formatProgress(progress) {
+    if (progress === null || progress === undefined) return 'N/A';
+    return `${progress.toFixed(1)}%`;
+  }
+
+  getProgressColorClass(progress) {
+    if (progress === null || progress === undefined) return 'no-progress';
+    
+    // Return a data attribute for dynamic color calculation
+    return `progress-${Math.floor(progress / 10) * 10}`;
   }
 
   formatPrice(price) {
@@ -181,6 +205,62 @@ class Dashboard {
       statusDot.classList.add('inactive');
       statusText.textContent = 'Disconnected';
     }
+  }
+
+  renderPagination() {
+    const paginationContainer = document.querySelector('.pagination');
+    if (!paginationContainer) {
+      // Create pagination container if it doesn't exist
+      const container = document.createElement('div');
+      container.className = 'pagination';
+      document.querySelector('.token-table').after(container);
+    }
+    
+    const totalPages = Math.ceil(this.totalTokens / this.tokensPerPage);
+    const pagination = document.querySelector('.pagination');
+    pagination.innerHTML = '';
+    
+    // First button
+    const firstBtn = document.createElement('button');
+    firstBtn.className = 'pagination-btn';
+    firstBtn.textContent = '⇤ First';
+    firstBtn.disabled = this.currentPage === 1;
+    firstBtn.onclick = () => this.changePage(1);
+    pagination.appendChild(firstBtn);
+    
+    // Previous button
+    const prevBtn = document.createElement('button');
+    prevBtn.className = 'pagination-btn';
+    prevBtn.textContent = '← Previous';
+    prevBtn.disabled = this.currentPage === 1;
+    prevBtn.onclick = () => this.changePage(this.currentPage - 1);
+    pagination.appendChild(prevBtn);
+    
+    // Page info
+    const pageInfo = document.createElement('span');
+    pageInfo.className = 'page-info';
+    pageInfo.textContent = `Page ${this.currentPage} of ${totalPages} (${this.totalTokens} tokens)`;
+    pagination.appendChild(pageInfo);
+    
+    // Next button
+    const nextBtn = document.createElement('button');
+    nextBtn.className = 'pagination-btn';
+    nextBtn.textContent = 'Next →';
+    nextBtn.disabled = this.currentPage === totalPages;
+    nextBtn.onclick = () => this.changePage(this.currentPage + 1);
+    pagination.appendChild(nextBtn);
+  }
+  
+  changePage(page) {
+    const totalPages = Math.ceil(this.totalTokens / this.tokensPerPage);
+    if (page < 1 || page > totalPages) return;
+    
+    this.currentPage = page;
+    this.renderTokens();
+    this.renderPagination();
+    
+    // Scroll to top of table
+    document.querySelector('.token-table').scrollIntoView({ behavior: 'smooth' });
   }
 
   startAutoUpdate() {

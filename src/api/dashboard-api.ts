@@ -69,7 +69,6 @@ router.get('/tokens', async (req, res) => {
       WHERE t.created_at > NOW() - INTERVAL '30 days'
         AND t.symbol IS NOT NULL
       ORDER BY t.created_at DESC
-      LIMIT 50
     `;
 
     const result = await pool.query(query);
@@ -77,7 +76,7 @@ router.get('/tokens', async (req, res) => {
     // Format the data for frontend
     const tokens = result.rows.map((row: any, index: number) => {
       const priceSol = parseFloat(row.price_sol) || 0;
-      const priceUsd = priceSol * parseFloat(solPriceUsd);
+      const priceUsd = parseFloat(row.price_usd) || (priceSol * parseFloat(solPriceUsd));
       
       return {
         rank: index + 1,
@@ -110,6 +109,7 @@ router.get('/tokens', async (req, res) => {
           usd: 0,
           sol: 0
         },
+        bondingCurveProgress: row.bonding_curve_progress !== null && row.bonding_curve_progress !== undefined ? parseFloat(row.bonding_curve_progress) : null,
         platform: row.bonding_curve_progress !== null ? 'pumpfun' : 'raydium'
       };
     });

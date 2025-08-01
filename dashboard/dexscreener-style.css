@@ -16,6 +16,69 @@ body {
     overflow-x: auto;
 }
 
+/* Pagination styles */
+.pagination {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 20px;
+    padding: 20px;
+    background-color: #1a1a1a;
+    border-top: 1px solid #333;
+    margin-top: 20px;
+}
+
+.pagination-btn {
+    background-color: #2a2a2a;
+    color: #ffffff;
+    border: 1px solid #333;
+    padding: 8px 16px;
+    cursor: pointer;
+    border-radius: 4px;
+    font-size: 13px;
+    transition: all 0.2s ease;
+}
+
+.pagination-btn:hover:not(:disabled) {
+    background-color: #14f195;
+    color: #0d0d0d;
+    border-color: #14f195;
+}
+
+.pagination-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.page-info {
+    color: #999;
+    font-size: 13px;
+}
+
+/* Progress column styling */
+.progress {
+    font-weight: 600;
+    text-align: center;
+}
+
+.progress.no-progress {
+    color: #666;
+    font-style: italic;
+}
+
+/* Progress color classes - gradient from red to green */
+.progress.progress-0 { color: #ff0000; }
+.progress.progress-10 { color: #ff1a00; }
+.progress.progress-20 { color: #ff3300; }
+.progress.progress-30 { color: #ff4d00; }
+.progress.progress-40 { color: #ff6600; }
+.progress.progress-50 { color: #ff8000; }
+.progress.progress-60 { color: #ff9900; }
+.progress.progress-70 { color: #ffb300; }
+.progress.progress-80 { color: #ffcc00; }
+.progress.progress-90 { color: #ccff00; }
+.progress.progress-100 { color: #00ff00; }
+
 /* Header styling */
 .header {
     background-color: #1a1a1a;
