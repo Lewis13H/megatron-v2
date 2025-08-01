@@ -1,4 +1,5 @@
 {
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
   "permissions": {
     "allow": [
       "Bash(npm install:*)",
@@ -52,12 +53,33 @@
       "WebFetch(domain:github.com)",
       "WebFetch(domain:docs.raydium.io)",
       "Bash(del srcmonitorspumpfunpumpfun-monitor-new-token-mint.ts)",
-      "Bash(start ui-viewer/index.html)",
       "Bash(explorer:*)",
       "Bash(npx http-server:*)",
       "Bash(git restore:*)",
       "Bash(start index.html)",
-      "WebFetch(domain:solana.stackexchange.com)"
+      "WebFetch(domain:solana.stackexchange.com)",
+      "WebFetch(domain:dexscreener.com)",
+      "Bash(move srcservicessol-price-service.ts srcservicesprice)",
+      "Bash(cmd /c move:*)",
+      "Bash(del:*)",
+      "Bash(powershell:*)",
+      "Bash(curl:*)",
+      "Bash(start http://localhost:3000)",
+      "Bash(del:*)",
+      "WebFetch(domain:docs.pyth.network)",
+      "WebFetch(domain:www.pyth.network)",
+      "WebFetch(domain:insights.pyth.network)",
+      "Bash(tasklist:*)",
+      "Bash(find:*)",
+      "Bash(move:*)",
+      "Bash(pkill:*)",
+      "Bash(true)",
+      "Bash(cmd:*)",
+      "Bash(rd:*)",
+      "Bash(if exist node_modules\\.cache rmdir /s /q node_modules\\.cache)",
+      "Bash(timeout:*)",
+      "Bash(SOL_PRICE_UPDATE_INTERVAL=1000 SOL_PRICE_CACHE_TIME=800 timeout 5 npm run sol-price:updater)",
+      "Bash(git check-ignore:*)"
     ],
     "deny": []
   }
