@@ -1,5 +1,4 @@
-import { Pool } from 'pg';
-import { getDbPool } from './connection';
+import { BaseOperations } from './base-operations';
 
 export interface Transaction {
   signature: string;
@@ -23,11 +22,9 @@ export interface Transaction {
   raw_data?: any;
 }
 
-export class TransactionOperations {
-  private pool: Pool;
-
+export class TransactionOperations extends BaseOperations {
   constructor() {
-    this.pool = getDbPool();
+    super();
   }
 
   /**
@@ -69,12 +66,7 @@ export class TransactionOperations {
       transaction.raw_data || null
     ];
 
-    try {
-      await this.pool.query(query, values);
-    } catch (error) {
-      console.error('Error inserting transaction:', error);
-      throw error;
-    }
+    await this.execute(query, values);
   }
 
   /**
@@ -99,11 +91,7 @@ export class TransactionOperations {
   }
 
   private async _insertBatch(transactions: Transaction[]): Promise<number> {
-    const client = await this.pool.connect();
-    
-    try {
-      await client.query('BEGIN');
-
+    return this.executeInTransaction(async (client) => {
       // Build the VALUES clause for bulk insert
       const values: any[] = [];
       const placeholders: string[] = [];
@@ -152,16 +140,8 @@ export class TransactionOperations {
       `;
 
       const result = await client.query(query, values);
-      await client.query('COMMIT');
-      
       return result.rowCount || 0;
-    } catch (error) {
-      await client.query('ROLLBACK');
-      console.error('Error in bulk insert:', error);
-      throw error;
-    } finally {
-      client.release();
-    }
+    });
   }
 
   /**
@@ -182,8 +162,7 @@ export class TransactionOperations {
       LIMIT $2
     `;
 
-    const result = await this.pool.query(query, [tokenId, limit]);
-    return result.rows;
+    return await this.queryMany(query, [tokenId, limit]);
   }
 
   /**
@@ -194,8 +173,7 @@ export class TransactionOperations {
       SELECT * FROM get_transaction_volume_stats($1, $2::interval)
     `;
 
-    const result = await this.pool.query(query, [tokenId, `${intervalHours} hours`]);
-    return result.rows[0];
+    return await this.queryOne(query, [tokenId, `${intervalHours} hours`]);
   }
 
   /**
@@ -216,8 +194,7 @@ export class TransactionOperations {
       ORDER BY count DESC
     `;
 
-    const result = await this.pool.query(query, [tokenId]);
-    return result.rows;
+    return await this.queryMany(query, [tokenId]);
   }
 
   /**
@@ -237,9 +214,9 @@ export class TransactionOperations {
         WHERE hypertable_name = 'transactions'
       `;
       
-      const result = await this.pool.query(query);
-      if (result.rows.length > 0) {
-        return result.rows[0];
+      const result = await this.queryOne(query);
+      if (result) {
+        return result;
       }
     } catch (e) {
       // Fall back to basic query
@@ -250,8 +227,7 @@ export class TransactionOperations {
           (SELECT count(*) FROM pg_inherits WHERE inhparent = 'transactions'::regclass) as num_chunks
       `;
       
-      const result = await this.pool.query(fallbackQuery);
-      return result.rows[0];
+      return await this.queryOne(fallbackQuery);
     }
   }
 
@@ -271,8 +247,7 @@ export class TransactionOperations {
         LIMIT 10
       `;
 
-      const result = await this.pool.query(query);
-      return result.rows;
+      return await this.queryMany(query);
     } catch (e) {
       // Fallback for different TimescaleDB versions
       return [{

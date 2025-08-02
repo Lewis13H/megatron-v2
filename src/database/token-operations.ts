@@ -1,5 +1,4 @@
-import { Pool } from 'pg';
-import { getDbPool } from './connection';
+import { BaseOperations } from './base-operations';
 
 export interface Token {
   id?: string;
@@ -18,11 +17,9 @@ export interface Token {
   graduation_signature?: string;
 }
 
-export class TokenOperations {
-  private pool: Pool;
-
+export class TokenOperations extends BaseOperations {
   constructor() {
-    this.pool = getDbPool();
+    super();
   }
 
   /**
@@ -59,8 +56,7 @@ export class TokenOperations {
       token.graduation_signature
     ];
 
-    const result = await this.pool.query(query, values);
-    return result.rows[0];
+    return await this.queryOne<Token>(query, values) as Token;
   }
 
   /**
@@ -68,8 +64,7 @@ export class TokenOperations {
    */
   async getTokenByMint(mintAddress: string): Promise<Token | null> {
     const query = 'SELECT * FROM tokens WHERE mint_address = $1';
-    const result = await this.pool.query(query, [mintAddress]);
-    return result.rows[0] || null;
+    return await this.queryOne<Token>(query, [mintAddress]);
   }
 
   /**
@@ -77,8 +72,7 @@ export class TokenOperations {
    */
   async getTokenById(id: string): Promise<Token | null> {
     const query = 'SELECT * FROM tokens WHERE id = $1';
-    const result = await this.pool.query(query, [id]);
-    return result.rows[0] || null;
+    return await this.queryOne<Token>(query, [id]);
   }
 
   /**
@@ -91,8 +85,7 @@ export class TokenOperations {
       ORDER BY creation_timestamp DESC 
       LIMIT $2
     `;
-    const result = await this.pool.query(query, [platform, limit]);
-    return result.rows;
+    return await this.queryMany<Token>(query, [platform, limit]);
   }
 
   /**
@@ -114,13 +107,11 @@ export class TokenOperations {
       RETURNING *
     `;
     
-    const result = await this.pool.query(query, [
+    return await this.queryOne<Token>(query, [
       mintAddress,
       graduationSignature,
       graduationTimestamp
     ]);
-    
-    return result.rows[0] || null;
   }
 
   /**
@@ -132,8 +123,7 @@ export class TokenOperations {
       ORDER BY creation_timestamp DESC 
       LIMIT $1
     `;
-    const result = await this.pool.query(query, [limit]);
-    return result.rows;
+    return await this.queryMany<Token>(query, [limit]);
   }
 
   /**
@@ -145,8 +135,7 @@ export class TokenOperations {
       FROM tokens 
       GROUP BY platform
     `;
-    const result = await this.pool.query(query);
-    return result.rows;
+    return await this.queryMany<{ platform: string; count: number }>(query);
   }
 }
 

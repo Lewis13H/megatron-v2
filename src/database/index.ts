@@ -1,4 +1,5 @@
-export { getDbPool, closeDbPool } from './connection';
+export { getDbPool, closeDbPool, db, DatabaseConnection } from './connection';
+export { BaseOperations } from './base-operations';
 export { PoolOperations } from './pool-operations';
 export type { PoolData } from './pool-operations';
 export { priceOperations } from './price-operations';

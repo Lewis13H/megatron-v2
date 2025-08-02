@@ -80,7 +80,7 @@ PUMP_FUN_EVENT_PARSER.addParserFromIdl(
 
 // Initialize database operations
 const dbPool = getDbPool();
-const poolOperations = new PoolOperations(dbPool);
+const poolOperations = new PoolOperations();
 
 // Function to fetch metadata from URI
 async function fetchTokenMetadata(uri: string): Promise<TokenMetadata | null> {

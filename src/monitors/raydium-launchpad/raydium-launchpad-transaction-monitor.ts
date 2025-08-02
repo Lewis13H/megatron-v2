@@ -82,7 +82,7 @@ RAYDIUM_LAUNCHPAD_EVENT_PARSER.addParserFromIdl(
 
 // Initialize database operations
 const dbPool = getDbPool();
-const poolOperations = new PoolOperations(dbPool);
+const poolOperations = new PoolOperations();
 const txIntegration = getTransactionIntegration();
 
 async function handleStream(client: Client, args: SubscribeRequest) {

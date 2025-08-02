@@ -1,5 +1,3 @@
-import { Pool } from 'pg';
-import { getDbPool } from './connection';
 import { PriceOperations, PriceCandle } from './price-operations';
 
 export interface PriceCandleWithUSD extends PriceCandle {
@@ -35,11 +33,8 @@ export interface TopTokenByUSD {
 }
 
 export class EnhancedPriceOperations extends PriceOperations {
-    private enhancedPool: Pool;
-    
     constructor() {
         super();
-        this.enhancedPool = getDbPool();
     }
 
     async getLatestPriceWithUSD(tokenId: string): Promise<{
@@ -50,7 +45,7 @@ export class EnhancedPriceOperations extends PriceOperations {
         timestamp: Date;
     } | null> {
         try {
-            const result = await this.enhancedPool.query(`
+            const result = await this.query(`
                 WITH latest_price AS (
                     SELECT 
                         close as price_sol,
@@ -104,7 +99,7 @@ export class EnhancedPriceOperations extends PriceOperations {
         interval: string = '1 minute'
     ): Promise<PriceCandleWithUSD[]> {
         try {
-            const result = await this.enhancedPool.query(
+            const result = await this.query(
                 'SELECT * FROM get_price_candles_with_usd($1, $2, $3, $4)',
                 [tokenId, interval, startTime, endTime]
             );
@@ -135,7 +130,7 @@ export class EnhancedPriceOperations extends PriceOperations {
 
     async getTokenStatsWithUSD(tokenId: string): Promise<TokenStatsWithUSD | null> {
         try {
-            const result = await this.enhancedPool.query(
+            const result = await this.query(
                 'SELECT * FROM get_token_stats_with_usd($1)',
                 [tokenId]
             );
@@ -166,7 +161,7 @@ export class EnhancedPriceOperations extends PriceOperations {
 
     async getTopTokensByUSDVolume(limit: number = 100): Promise<TopTokenByUSD[]> {
         try {
-            const result = await this.enhancedPool.query(`
+            const result = await this.query(`
                 SELECT * FROM top_tokens_by_usd_volume
                 LIMIT $1
             `, [limit]);
@@ -188,7 +183,7 @@ export class EnhancedPriceOperations extends PriceOperations {
 
     async refreshTopTokensView(): Promise<void> {
         try {
-            await this.enhancedPool.query('SELECT refresh_top_tokens_usd()');
+            await this.execute('SELECT refresh_top_tokens_usd()', []);
             console.log('Refreshed top tokens by USD volume view');
         } catch (error) {
             console.error('Error refreshing top tokens view:', error);
@@ -202,7 +197,7 @@ export class EnhancedPriceOperations extends PriceOperations {
         endTime: Date
     ): Promise<number> {
         try {
-            const result = await this.enhancedPool.query(
+            const result = await this.query(
                 'SELECT update_price_candle_usd_values($1, $2, $3) as updated',
                 [tokenId, startTime, endTime]
             );
@@ -225,7 +220,7 @@ export class EnhancedPriceOperations extends PriceOperations {
         last_candle: Date;
     } | null> {
         try {
-            const result = await this.enhancedPool.query('SELECT * FROM usd_calculation_health');
+            const result = await this.query('SELECT * FROM usd_calculation_health');
 
             if (result.rows.length === 0) {
                 return null;
@@ -257,14 +252,14 @@ export class EnhancedPriceOperations extends PriceOperations {
             console.log(`Backfilling USD values from ${startTime.toISOString()} to ${endTime.toISOString()}`);
 
             // Update transactions
-            const txResult = await this.enhancedPool.query(
+            const txResult = await this.query(
                 'SELECT * FROM backfill_transaction_usd_values($1, $2, 1000)',
                 [startTime, endTime]
             );
             const transactions_updated = txResult.rows[0]?.updated_count || 0;
 
             // Update price candles for all tokens in the range
-            const tokenResult = await this.enhancedPool.query(`
+            const tokenResult = await this.query(`
                 SELECT DISTINCT token_id
                 FROM price_candles_1m
                 WHERE bucket >= $1 AND bucket < $2

@@ -1,4 +1,5 @@
-import { Pool } from 'pg';
+import { BaseOperations } from './base-operations';
+import { PoolClient } from 'pg';
 
 export interface PoolData {
   pool_address: string;
@@ -26,19 +27,17 @@ export interface PoolData {
   quote_vault?: string;
 }
 
-export class PoolOperations {
-  constructor(private pool: Pool) {}
+export class PoolOperations extends BaseOperations {
+  constructor() {
+    super();
+  }
 
   /**
    * Insert a new pool with token relationship
    * Ensures transactional integrity between token and pool
    */
   async insertPoolWithToken(poolData: PoolData, tokenMint: string): Promise<any> {
-    const client = await this.pool.connect();
-    
-    try {
-      await client.query('BEGIN');
-      
+    return this.executeInTransaction(async (client: PoolClient) => {
       // Get token ID from mint address
       const tokenResult = await client.query(
         'SELECT id, platform FROM tokens WHERE mint_address = $1',
@@ -93,15 +92,8 @@ export class PoolOperations {
       ];
       
       const poolResult = await client.query(poolQuery, poolValues);
-      
-      await client.query('COMMIT');
       return poolResult.rows[0];
-    } catch (error) {
-      await client.query('ROLLBACK');
-      throw error;
-    } finally {
-      client.release();
-    }
+    });
   }
 
   /**
@@ -139,7 +131,7 @@ export class PoolOperations {
       WHERE bonding_curve_address = $${paramCount}
     `;
     
-    await this.pool.query(query, values);
+    await this.execute(query, values);
   }
 
   /**
@@ -160,8 +152,7 @@ export class PoolOperations {
       WHERE p.pool_address = $1
     `;
     
-    const result = await this.pool.query(query, [poolAddress]);
-    return result.rows[0];
+    return await this.queryOne(query, [poolAddress]);
   }
 
   /**
@@ -176,15 +167,14 @@ export class PoolOperations {
       ORDER BY p.created_at DESC
     `;
     
-    const result = await this.pool.query(query, [tokenMint]);
-    return result.rows;
+    return await this.queryMany(query, [tokenMint]);
   }
 
   /**
    * Update pool status (e.g., when graduated)
    */
   async updatePoolStatus(bondingCurveAddress: string, status: 'active' | 'graduated' | 'closed' | 'failed'): Promise<void> {
-    await this.pool.query(
+    await this.execute(
       'UPDATE pools SET status = $1, updated_at = NOW() WHERE bonding_curve_address = $2',
       [status, bondingCurveAddress]
     );

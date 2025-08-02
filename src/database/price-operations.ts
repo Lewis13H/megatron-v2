@@ -1,5 +1,4 @@
-import { Pool } from 'pg';
-import { getDbPool } from './connection';
+import { BaseOperations } from './base-operations';
 
 export interface PriceCandle {
   token_id: string;
@@ -39,11 +38,9 @@ export interface VolumeStats {
   unique_traders_24h: number;
 }
 
-export class PriceOperations {
-  private pool: Pool;
-
+export class PriceOperations extends BaseOperations {
   constructor() {
-    this.pool = getDbPool();
+    super();
   }
 
   /**
@@ -51,13 +48,12 @@ export class PriceOperations {
    */
   async getLatestPrice(tokenId: string): Promise<LatestPrice | null> {
     const query = `SELECT * FROM get_latest_price($1)`;
-    const result = await this.pool.query(query, [tokenId]);
+    const row = await this.queryOne<any>(query, [tokenId]);
     
-    if (result.rows.length === 0) {
+    if (!row) {
       return null;
     }
 
-    const row = result.rows[0];
     return {
       price: parseFloat(row.price),
       bucket: new Date(row.bucket_time),
@@ -71,13 +67,12 @@ export class PriceOperations {
    */
   async getPriceChange(tokenId: string, interval: string = '1 hour'): Promise<PriceChange | null> {
     const query = `SELECT * FROM get_price_change($1, $2::interval)`;
-    const result = await this.pool.query(query, [tokenId, interval]);
+    const row = await this.queryOne<any>(query, [tokenId, interval]);
     
-    if (result.rows.length === 0) {
+    if (!row) {
       return null;
     }
 
-    const row = result.rows[0];
     return {
       current_price: parseFloat(row.current_price),
       previous_price: parseFloat(row.previous_price),
@@ -114,9 +109,9 @@ export class PriceOperations {
       ORDER BY bucket ASC
     `;
 
-    const result = await this.pool.query(query, [tokenId, startTime, endTime]);
+    const rows = await this.queryMany<any>(query, [tokenId, startTime, endTime]);
     
-    return result.rows.map(row => ({
+    return rows.map(row => ({
       token_id: row.token_id,
       bucket: new Date(row.bucket),
       open: parseFloat(row.open),
@@ -168,13 +163,12 @@ export class PriceOperations {
       CROSS JOIN daily_stats d
     `;
 
-    const result = await this.pool.query(query, [tokenId]);
+    const row = await this.queryOne<any>(query, [tokenId]);
     
-    if (result.rows.length === 0) {
+    if (!row) {
       return null;
     }
 
-    const row = result.rows[0];
     return {
       token_id: row.token_id,
       volume_sol_1h: parseFloat(row.volume_sol_1h),
@@ -225,8 +219,7 @@ export class PriceOperations {
       LIMIT $1
     `;
 
-    const result = await this.pool.query(query, [limit]);
-    return result.rows;
+    return await this.queryMany(query, [limit]);
   }
 
   /**
@@ -281,7 +274,7 @@ export class PriceOperations {
       ORDER BY minute DESC
     `;
 
-    const result = await this.pool.query(rawQuery, [tokenId]);
+    const result = await this.query(rawQuery, [tokenId]);
     
     const discrepancies = result.rows.filter(row => {
       // Check for significant differences
@@ -314,7 +307,7 @@ export class PriceOperations {
     const start = startTime || new Date(Date.now() - 24 * 60 * 60 * 1000); // Default: 24 hours ago
     const end = endTime || new Date();
     
-    await this.pool.query(query, [start.toISOString(), end.toISOString()]);
+    await this.execute(query, [start.toISOString(), end.toISOString()]);
   }
 
   /**
@@ -362,9 +355,9 @@ export class PriceOperations {
         LEFT JOIN hour_ago_prices hp ON lp.token_id = hp.token_id
       `;
       
-      const result = await this.pool.query(query, [batch]);
+      const rows = await this.queryMany<any>(query, [batch]);
       
-      for (const row of result.rows) {
+      for (const row of rows) {
         results.set(row.token_id, {
           current_price: parseFloat(row.current_price),
           previous_price: parseFloat(row.previous_price),

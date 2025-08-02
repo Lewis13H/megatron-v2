@@ -1,4 +1,4 @@
-import { pool } from './config';
+import { getDbPool } from './connection';
 import { PoolOperations } from './pool-operations';
 
 interface TokenData {
@@ -14,7 +14,8 @@ interface TokenData {
   metadata?: any;
 }
 
-const poolOps = new PoolOperations(pool);
+const pool = getDbPool();
+const poolOps = new PoolOperations();
 
 // Helper function to get current SOL price
 async function getCurrentSolPrice(): Promise<number | null> {
@@ -112,7 +113,7 @@ export async function saveRaydiumToken(monitorOutput: any) {
       baseTokenMint: monitorOutput.baseTokenMint,
       quoteTokenMint: monitorOutput.quoteTokenMint,
       initialPrice: monitorOutput.initialPrice,
-      initialLiquidity: monitorOutput.initialLiquidity,
+      initialLiquidity: monitorOutput.initialLiquidity || null,
       creator: monitorOutput.creator || 'unknown' // You may need to extract this from transaction
     };
     
@@ -159,7 +160,10 @@ export async function saveRaydiumToken(monitorOutput: any) {
         platform: 'raydium_launchpad' as const,
         initial_price: formattedData.initialPrice,
         initial_price_usd: initialPriceUsd,
-        initial_quote_liquidity: formattedData.initialLiquidity ? String(formattedData.initialLiquidity) : undefined
+        latest_price: formattedData.initialPrice,
+        latest_price_usd: initialPriceUsd,
+        initial_quote_liquidity: formattedData.initialLiquidity ? String(formattedData.initialLiquidity) : undefined,
+        bonding_curve_progress: 0 // Raydium Launchpad tokens start at 0% progress
       };
       
       const poolResult = await poolOps.insertPoolWithToken(poolData, formattedData.baseTokenMint);

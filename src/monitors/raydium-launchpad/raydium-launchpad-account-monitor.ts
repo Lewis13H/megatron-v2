@@ -16,9 +16,22 @@ import { getDbPool, PoolOperations, PoolData } from "../../database";
 
 const RAYDIUM_LAUNCHPAD_PROGRAM_ID = 'LanMV9sAd7wArD4vJFi2qDdfnVhFxYSUg6eADduJ3uj';
 
+// Global shutdown flag
+let isShuttingDown = false;
+
+// Raydium LaunchLab Mechanics (Updated based on UI evidence)
+// - Bonding Curve Progress: Based on SOL raised / target (85 SOL), NOT token sales
+// - Token Allocation: Standard is 79.31% for bonding curve, 20.69% reserved
+// - total_base_sell: Total tokens for sale (typically 793.1M = 79.31% of 1B supply)
+// - real_base: Current tokens remaining in pool
+// - real_quote: Current SOL in pool (use for progress calculation)
+// - total_quote_fund_raising: Target SOL to raise (typically 85 SOL)
+// - Virtual reserves: Used for price calculation (constant product AMM)
+// - Graduation: Occurs when SOL target is reached, not when tokens sell out
+
 // Initialize database operations
 const dbPool = getDbPool();
-const poolOperations = new PoolOperations(dbPool);
+const poolOperations = new PoolOperations();
 
 interface SubscribeRequest {
   accounts: { [key: string]: SubscribeRequestFilterAccounts };
@@ -152,12 +165,14 @@ ${JSON.stringify(parsedAccount, null, 2)}
 }
 
 async function subscribeCommand(client: Client, args: SubscribeRequest) {
-  while (true) {
+  while (!isShuttingDown) {
     try {
       await handleStream(client, args);
     } catch (error) {
-      console.error("Stream error, restarting in 1 second...", error);
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      if (!isShuttingDown) {
+        console.error("Stream error, restarting in 1 second...", error);
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      }
     }
   }
 }
@@ -168,39 +183,6 @@ const client = new Client(
   undefined,
 );
 
-// We need to monitor specific pool accounts, not just by owner
-// Let's add some known pool addresses to test
-const testPoolAddresses = [
-  "3KJNYdEsDd2m9rVTQ3J7PJhR2dFoXGA1YWCiD7FLhyo1",
-  "62hxwQM7Q5XP9zJiPDyFMoDW1viPRBZBDCNjkG8P7yEW",
-  "2RBWGh3NqXtiCaGMWD4dENmozTKeW67jVMniyE5PuvQJ",
-  "J6NXNqbE55UyzbAHr9Da9VihjwJEvBCer1xZX8KnAEDu",
-  "2yJCccA3sRYTqaSjrNKXMvcXqXGWF1t8CWtvawfz2xKz"
-];
-
-const req: SubscribeRequest = {
-  "slots": {},
-  "accounts": {
-    "raydium_launchpad_owner": {
-      "account": [],
-      "filters": [],
-      "owner": [RAYDIUM_LAUNCHPAD_PROGRAM_ID] 
-    },
-    // Also monitor specific pool accounts directly
-    "raydium_pools": {
-      "account": testPoolAddresses,
-      "filters": [],
-      "owner": []
-    }
-  },
-  "transactions": {},
-  "blocks": {},
-  "blocksMeta": {},
-  "accountsDataSlice": [],
-  "commitment": CommitmentLevel.PROCESSED,
-  entry: {},
-  transactionsStatus: {}
-}
 
 async function savePoolStateToDatabase(accountData: any) {
   const { pubKey, parsedAccount } = accountData;
@@ -240,6 +222,80 @@ async function savePoolStateToDatabase(accountData: any) {
         updateData.virtual_sol_reserves = poolState.virtual_quote;
       }
       
+      // Calculate current price using constant product AMM formula
+      // K = X × Y, where X is token reserves and Y is SOL reserves
+      if (poolState.virtual_base && poolState.virtual_quote && poolState.total_base_sell && poolState.real_base) {
+        const virtualTokenReserves = parseFloat(poolState.virtual_base); // Initial virtual tokens
+        const virtualSolReserves = parseFloat(poolState.virtual_quote); // Initial virtual SOL
+        const totalBaseSell = parseFloat(poolState.total_base_sell); // Total tokens for sale
+        const realBase = parseFloat(poolState.real_base); // Tokens remaining
+        
+        // Calculate tokens sold
+        const tokensSold = totalBaseSell - realBase;
+        
+        // Calculate constant K
+        const K = virtualTokenReserves * virtualSolReserves;
+        
+        // Calculate current reserves after tokens sold
+        const currentTokenReserves = virtualTokenReserves - tokensSold;
+        const currentSolReserves = K / currentTokenReserves;
+        
+        // Calculate current price
+        // SOL has 9 decimals, tokens have 6 decimals
+        const priceInSol = (currentSolReserves / 1e9) / (currentTokenReserves / 1e6);
+        updateData.latest_price = priceInSol.toString();
+        
+        // Also store the price increase from initial
+        const initialPrice = (virtualSolReserves / 1e9) / (virtualTokenReserves / 1e6);
+        const priceMultiplier = priceInSol / initialPrice;
+        
+        console.log(`   Tokens sold: ${(tokensSold / 1e6).toFixed(2)}M / ${(totalBaseSell / 1e6).toFixed(2)}M (${((tokensSold / totalBaseSell) * 100).toFixed(2)}%)`);
+        console.log(`   Price multiplier: ${priceMultiplier.toFixed(2)}x from initial`);
+      }
+      
+      // Calculate USD price if SOL price is available
+      if (updateData.latest_price) {
+        try {
+          const solPriceResult = await dbPool.query(
+            'SELECT price_usd FROM sol_usd_prices ORDER BY price_time DESC LIMIT 1'
+          );
+          if (solPriceResult.rows.length > 0) {
+            const solPrice = parseFloat(solPriceResult.rows[0].price_usd);
+            const priceInUsd = parseFloat(updateData.latest_price) * solPrice;
+            updateData.latest_price_usd = priceInUsd.toString();
+          }
+        } catch (error) {
+          console.error('Error fetching SOL price:', error);
+        }
+      }
+      
+      // Calculate bonding curve progress based on tokens sold
+      // Token-based progress is more intuitive for users
+      if (poolState.real_base && poolState.total_base_sell) {
+        const currentRealTokens = parseFloat(poolState.real_base);
+        const totalBaseSell = parseFloat(poolState.total_base_sell);
+        const tokensSold = totalBaseSell - currentRealTokens;
+        const tokenProgress = (tokensSold / totalBaseSell) * 100;
+        
+        // Use token-based progress as the primary metric
+        const clampedProgress = Math.max(0, Math.min(100, tokenProgress));
+        updateData.bonding_curve_progress = clampedProgress.toFixed(2);
+        
+        console.log(`   Bonding Curve Progress: ${clampedProgress.toFixed(2)}% (tokens sold)`);
+        console.log(`   Tokens sold: ${(tokensSold / 1e6).toFixed(2)}M / ${(totalBaseSell / 1e6).toFixed(2)}M`);
+        
+        // Also show SOL progress for reference
+        if (poolState.total_quote_fund_raising && poolState.real_quote) {
+          const targetSol = parseFloat(poolState.total_quote_fund_raising) / 1e9;
+          const currentSol = parseFloat(poolState.real_quote) / 1e9;
+          const solProgress = (currentSol / targetSol) * 100;
+          
+          console.log(`   SOL raised: ${currentSol.toFixed(2)} / ${targetSol.toFixed(2)} SOL (${solProgress.toFixed(2)}% of target)`);
+        }
+      } else {
+        console.log(`   Warning: Missing total_quote_fund_raising or real_quote - cannot calculate bonding curve progress`);
+      }
+      
       await dbPool.query(
         `UPDATE pools 
          SET status = $1, 
@@ -247,14 +303,20 @@ async function savePoolStateToDatabase(accountData: any) {
              real_sol_reserves = COALESCE($3, real_sol_reserves),
              virtual_token_reserves = COALESCE($4, virtual_token_reserves),
              virtual_sol_reserves = COALESCE($5, virtual_sol_reserves),
-             updated_at = $6
-         WHERE pool_address = $7`,
+             latest_price = COALESCE($6, latest_price),
+             latest_price_usd = COALESCE($7, latest_price_usd),
+             bonding_curve_progress = COALESCE($8, bonding_curve_progress),
+             updated_at = $9
+         WHERE pool_address = $10`,
         [
           updateData.status,
           updateData.real_token_reserves,
           updateData.real_sol_reserves,
           updateData.virtual_token_reserves,
           updateData.virtual_sol_reserves,
+          updateData.latest_price,
+          updateData.latest_price_usd,
+          updateData.bonding_curve_progress,
           updateData.updated_at,
           pubKey
         ]
@@ -263,6 +325,10 @@ async function savePoolStateToDatabase(accountData: any) {
       console.log(`💾 Pool state updated in database: ${pubKey}`);
       console.log(`   Status: ${updateData.status}`);
       console.log(`   Real Reserves: ${poolState.real_base} tokens / ${poolState.real_quote} quote`);
+      console.log(`   Virtual Reserves: ${poolState.virtual_base} tokens / ${poolState.virtual_quote} SOL`);
+      if (updateData.latest_price) {
+        console.log(`   Current Price: ${updateData.latest_price} SOL${updateData.latest_price_usd ? ` ($${updateData.latest_price_usd} USD)` : ''}`);
+      }
     } else {
       // New pool - save full data
       const poolData: PoolData = {
@@ -308,6 +374,62 @@ function getPoolStatus(statusCode: number): string {
 console.log("Starting Raydium Launchpad Account Monitor");
 console.log(`Connected to: ${process.env.GRPC_URL}`);
 console.log(`Program ID: ${RAYDIUM_LAUNCHPAD_PROGRAM_ID}`);
-console.log("Monitoring: Account updates\n");
+console.log("Monitoring: ALL accounts owned by Raydium Launchpad program\n");
+
+const req: SubscribeRequest = {
+  "slots": {},
+  "accounts": {
+    "raydium_launchpad": {
+      "account": [],
+      "filters": [],
+      "owner": [RAYDIUM_LAUNCHPAD_PROGRAM_ID] 
+    }
+  },
+  "transactions": {},
+  "blocks": {},
+  "blocksMeta": {},
+  "accountsDataSlice": [],
+  "commitment": CommitmentLevel.PROCESSED,
+  entry: {},
+  transactionsStatus: {}
+}
+
+// Handle graceful shutdown
+async function shutdown() {
+  if (isShuttingDown) return;
+  isShuttingDown = true;
+  
+  console.log('\n⏹️  Shutting down monitor gracefully...');
+  try {
+    // Close database pool
+    await dbPool.end();
+    console.log('✅ Database connections closed');
+    
+    // Close gRPC client
+    // client.close();  // close() method might not exist on Client
+    console.log('✅ gRPC client connection will be terminated');
+    
+    // Exit cleanly
+    process.exit(0);
+  } catch (error) {
+    console.error('Error during shutdown:', error);
+    process.exit(1);
+  }
+}
+
+// Handle Ctrl+C
+process.on('SIGINT', shutdown);
+process.on('SIGTERM', shutdown);
+
+// Handle uncaught errors
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught exception:', error);
+  shutdown();
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+  shutdown();
+});
 
 subscribeCommand(client, req);

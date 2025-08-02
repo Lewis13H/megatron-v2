@@ -86,7 +86,7 @@ export class PumpFunAccountMonitor {
     
     // Initialize database operations
     const dbPool = getDbPool();
-    this.poolOperations = new PoolOperations(dbPool);
+    this.poolOperations = new PoolOperations();
   }
 
   async start() {
