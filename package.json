@@ -8,6 +8,8 @@
     "rlmonitor:mint": "npx ts-node src/monitors/raydium-launchpad/raydium-launchpad-monitor-new-token-mint.ts",
     "rlmonitor:trans": "npx ts-node src/monitors/raydium-launchpad/raydium-launchpad-transaction-monitor.ts",
     "rlmonitor:account": "npx ts-node src/monitors/raydium-launchpad/raydium-launchpad-account-monitor.ts",
+    "rlmonitor:account:v2": "npx ts-node src/monitors/raydium-launchpad/raydium-launchpad-account-monitor-v2.ts",
+    "rlmonitor:account:v3": "npx ts-node src/monitors/raydium-launchpad/raydium-launchpad-account-monitor-v3.ts",
     "pfmonitor:mint": "npx ts-node src/monitors/pumpfun/pumpfun-monitor-new-token-mint.ts",
     "pfmonitor:account": "npx ts-node src/monitors/pumpfun/pump-fun-monitor-account.ts",
     "pfmonitor:transaction": "npx ts-node src/monitors/pumpfun/pumpfun-monitor-transaction.ts",
