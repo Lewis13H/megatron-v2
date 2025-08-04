@@ -39,45 +39,42 @@ npm run graduation:monitor
 # Build TypeScript files
 npm run build
 
-# Run tests (when implemented)
-npm test
+# Type checking (use TypeScript compiler directly)
+npx tsc --noEmit
 
-# Lint and type check
-npm run lint
-npm run typecheck
+# Linting (ESLint not configured - consider adding)
+# npm run lint
 ```
 
 ### Database Commands
 ```bash
-# Initialize database tables and schema
-npm run db:setup
+# Initialize database with all tables
+npx ts-node src/database/setup/setup-database.ts
 
-# Set up pool tables
-npm run db:setup:pools
+# Set up individual components
+npx ts-node src/database/setup/02-setup-pools.ts
+npx ts-node src/database/setup/03-setup-transactions.ts
 
-# Set up transaction tables
-npm run db:setup:transactions
+# Truncate all data (use with caution)
+npm run db:truncate
+```
 
-# Set up price aggregates and continuous views
-npm run db:setup:prices
+### Dashboard & API Commands
+```bash
+# Start API server (default port 3001)
+npm run dashboard:serve
 
-# Validate stored tokens
-npm run db:validate
+# Start dashboard with auto-reload (development)
+npm run dashboard:serve:dev
+```
 
-# Test pool operations
-npm run db:test:pools
+### SOL Price Service Commands
+```bash
+# Start SOL/USD price updater service
+npm run sol-price:updater
 
-# Test transaction operations
-npm run db:test:transactions
-
-# Test price aggregates
-npm run db:test:prices
-
-# Performance test transactions
-npm run db:perf:transactions
-
-# Check specific transaction
-npm run check-tx <signature>
+# Migrate to SOL price v2 architecture
+npm run sol-price:migrate
 ```
 
 ### Environment Setup

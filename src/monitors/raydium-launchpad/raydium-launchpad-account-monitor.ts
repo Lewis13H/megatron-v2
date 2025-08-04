@@ -222,35 +222,44 @@ async function savePoolStateToDatabase(accountData: any) {
         updateData.virtual_sol_reserves = poolState.virtual_quote;
       }
       
-      // Calculate current price using constant product AMM formula
-      // K = X × Y, where X is token reserves and Y is SOL reserves
-      if (poolState.virtual_base && poolState.virtual_quote && poolState.total_base_sell && poolState.real_base) {
-        const virtualTokenReserves = parseFloat(poolState.virtual_base); // Initial virtual tokens
-        const virtualSolReserves = parseFloat(poolState.virtual_quote); // Initial virtual SOL
-        const totalBaseSell = parseFloat(poolState.total_base_sell); // Total tokens for sale
-        const realBase = parseFloat(poolState.real_base); // Tokens remaining
+      // Calculate current price from real reserves
+      // For Raydium Launchpad, the actual price is determined by real reserves in the pool
+      if (poolState.real_base && poolState.real_quote && parseFloat(poolState.real_base) > 0) {
+        // Use real reserves for current spot price
+        const realTokenReserves = parseFloat(poolState.real_base);
+        const realSolReserves = parseFloat(poolState.real_quote);
         
-        // Calculate tokens sold
-        const tokensSold = totalBaseSell - realBase;
-        
-        // Calculate constant K
-        const K = virtualTokenReserves * virtualSolReserves;
-        
-        // Calculate current reserves after tokens sold
-        const currentTokenReserves = virtualTokenReserves - tokensSold;
-        const currentSolReserves = K / currentTokenReserves;
-        
-        // Calculate current price
+        // Calculate current price from real reserves
         // SOL has 9 decimals, tokens have 6 decimals
-        const priceInSol = (currentSolReserves / 1e9) / (currentTokenReserves / 1e6);
+        const priceInSol = (realSolReserves / 1e9) / (realTokenReserves / 1e6);
         updateData.latest_price = priceInSol.toString();
         
-        // Also store the price increase from initial
-        const initialPrice = (virtualSolReserves / 1e9) / (virtualTokenReserves / 1e6);
-        const priceMultiplier = priceInSol / initialPrice;
+        // Calculate initial price from virtual reserves for comparison
+        if (poolState.virtual_base && poolState.virtual_quote) {
+          const virtualTokenReserves = parseFloat(poolState.virtual_base);
+          const virtualSolReserves = parseFloat(poolState.virtual_quote);
+          const initialPrice = (virtualSolReserves / 1e9) / (virtualTokenReserves / 1e6);
+          const priceMultiplier = priceInSol / initialPrice;
+          
+          console.log(`   Initial price: ${initialPrice.toExponential(6)} SOL per token`);
+          console.log(`   Current price: ${priceInSol.toExponential(6)} SOL per token`);
+          console.log(`   Price multiplier: ${priceMultiplier.toFixed(2)}x from initial`);
+        }
         
-        console.log(`   Tokens sold: ${(tokensSold / 1e6).toFixed(2)}M / ${(totalBaseSell / 1e6).toFixed(2)}M (${((tokensSold / totalBaseSell) * 100).toFixed(2)}%)`);
-        console.log(`   Price multiplier: ${priceMultiplier.toFixed(2)}x from initial`);
+        // Log token sales progress
+        if (poolState.total_base_sell) {
+          const totalBaseSell = parseFloat(poolState.total_base_sell);
+          const tokensSold = totalBaseSell - realTokenReserves;
+          console.log(`   Tokens sold: ${(tokensSold / 1e6).toFixed(2)}M / ${(totalBaseSell / 1e6).toFixed(2)}M (${((tokensSold / totalBaseSell) * 100).toFixed(2)}%)`);
+        }
+      } else if (poolState.virtual_base && poolState.virtual_quote) {
+        // Fallback to virtual reserves for initial price (when no trading has occurred)
+        const virtualTokenReserves = parseFloat(poolState.virtual_base);
+        const virtualSolReserves = parseFloat(poolState.virtual_quote);
+        const initialPrice = (virtualSolReserves / 1e9) / (virtualTokenReserves / 1e6);
+        updateData.latest_price = initialPrice.toString();
+        
+        console.log(`   Initial price (no trades yet): ${initialPrice.toExponential(6)} SOL per token`);
       }
       
       // Calculate USD price if SOL price is available
@@ -269,28 +278,34 @@ async function savePoolStateToDatabase(accountData: any) {
         }
       }
       
-      // Calculate bonding curve progress based on tokens sold
-      // Token-based progress is more intuitive for users
-      if (poolState.real_base && poolState.total_base_sell) {
-        const currentRealTokens = parseFloat(poolState.real_base);
-        const totalBaseSell = parseFloat(poolState.total_base_sell);
-        const tokensSold = totalBaseSell - currentRealTokens;
-        const tokenProgress = (tokensSold / totalBaseSell) * 100;
+      // Calculate bonding curve progress based on SOL raised
+      // For Raydium Launchpad, graduation is based on reaching the SOL target (85 SOL)
+      if (poolState.total_quote_fund_raising && poolState.real_quote) {
+        const targetSol = parseFloat(poolState.total_quote_fund_raising) / 1e9;
+        const currentSol = parseFloat(poolState.real_quote) / 1e9;
+        const solProgress = (currentSol / targetSol) * 100;
         
-        // Use token-based progress as the primary metric
-        const clampedProgress = Math.max(0, Math.min(100, tokenProgress));
+        // Use SOL-based progress as the primary metric for Raydium
+        const clampedProgress = Math.max(0, Math.min(100, solProgress));
         updateData.bonding_curve_progress = clampedProgress.toFixed(2);
         
-        console.log(`   Bonding Curve Progress: ${clampedProgress.toFixed(2)}% (tokens sold)`);
-        console.log(`   Tokens sold: ${(tokensSold / 1e6).toFixed(2)}M / ${(totalBaseSell / 1e6).toFixed(2)}M`);
+        console.log(`   Bonding Curve Progress: ${clampedProgress.toFixed(2)}% (SOL raised)`);
+        console.log(`   SOL raised: ${currentSol.toFixed(2)} / ${targetSol.toFixed(2)} SOL`);
         
-        // Also show SOL progress for reference
-        if (poolState.total_quote_fund_raising && poolState.real_quote) {
-          const targetSol = parseFloat(poolState.total_quote_fund_raising) / 1e9;
-          const currentSol = parseFloat(poolState.real_quote) / 1e9;
-          const solProgress = (currentSol / targetSol) * 100;
+        // Also show token progress for reference
+        if (poolState.real_base && poolState.total_base_sell) {
+          const currentRealTokens = parseFloat(poolState.real_base);
+          const totalBaseSell = parseFloat(poolState.total_base_sell);
+          const tokensSold = totalBaseSell - currentRealTokens;
+          const tokenProgress = (tokensSold / totalBaseSell) * 100;
           
-          console.log(`   SOL raised: ${currentSol.toFixed(2)} / ${targetSol.toFixed(2)} SOL (${solProgress.toFixed(2)}% of target)`);
+          console.log(`   Tokens sold: ${(tokensSold / 1e6).toFixed(2)}M / ${(totalBaseSell / 1e6).toFixed(2)}M (${tokenProgress.toFixed(2)}%)`);
+          
+          // Log a warning if there's a large discrepancy
+          if (Math.abs(tokenProgress - solProgress) > 50) {
+            console.log(`   ⚠️  Large discrepancy between token progress (${tokenProgress.toFixed(1)}%) and SOL progress (${solProgress.toFixed(1)}%)`);
+            console.log(`   This may indicate the pool started with fewer tokens than total_base_sell`);
+          }
         }
       } else {
         console.log(`   Warning: Missing total_quote_fund_raising or real_quote - cannot calculate bonding curve progress`);

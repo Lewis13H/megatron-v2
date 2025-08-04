@@ -1,5 +1,5 @@
 import * as dotenv from 'dotenv';
-import { pool } from '../config';
+import { getDbPool } from '../connection';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -8,6 +8,7 @@ dotenv.config();
 async function setupPools() {
   console.log('🏗️  Setting up pools table...\n');
   
+  const pool = getDbPool();
   const client = await pool.connect();
   
   try {

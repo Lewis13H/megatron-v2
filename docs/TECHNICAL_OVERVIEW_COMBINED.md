@@ -1,10 +1,10 @@
-# Megatron V2 Technical Overview - Enhanced Architecture
+# Megatron V2 Technical Overview - Unified Architecture
 
 ## Executive Summary
 
 Megatron V2 is a sophisticated Solana memecoin trading system that combines real-time blockchain monitoring, machine learning-based prediction, and automated trading strategies. The system monitors token launches on Pump.fun and Raydium platforms, analyzing over 100,000 tokens weekly to identify high-probability trading opportunities. By leveraging a comprehensive scoring system and ML-driven graduation predictions, Megatron V2 aims to capture significant returns (300%+) while minimizing exposure to rug pulls and failed launches.
 
-This enhanced version incorporates an optimized data extraction architecture using Shyft gRPC for real-time streaming and Helius RPC for enrichment, designed to maximize data quality while managing API costs and rate limits effectively.
+This unified architecture incorporates an optimized data extraction system using Shyft gRPC for real-time streaming and Helius RPC for enrichment, designed to maximize data quality while managing API costs and rate limits effectively.
 
 ## System Architecture Overview
 
@@ -56,6 +56,7 @@ This enhanced version incorporates an optimized data extraction architecture usi
 
 #### Shyft gRPC (Primary - Real-time Streaming)
 - **Purpose**: Real-time token discovery and transaction monitoring
+- **Technology**: Yellowstone gRPC protocol
 - **Streams**:
   - New Token Stream: Monitors token creation events
   - Trading Stream: Tracks buy/sell transactions
@@ -198,6 +199,7 @@ RateLimitStrategy {
 - **Bonding Curve Tracking**: Account updates every 5 seconds
 - **Progressive Analysis**: Enrichment based on progress thresholds
 - **Key Metrics**: 
+  - Bonding curve progress (token-based calculation)
   - Initial liquidity patterns
   - Volume velocity
   - Holder accumulation rate
@@ -208,6 +210,11 @@ RateLimitStrategy {
 - **Liquidity Analysis**: Batch RPC calls for LP token data
 - **Trading Activity**: Aggregated volume metrics
 - **Migration Tracking**: Detect Pump.fun graduations
+- **Data Points**:
+  - Pool creation events
+  - Initial liquidity size
+  - Trading volume patterns
+  - LP token distribution
 
 ### 2. ML Prediction Engine
 
@@ -234,6 +241,7 @@ RateLimitStrategy {
   - Holder count >100
   - Social growth >50%/hour
   - No wash trading detected
+  - Minimum liquidity requirements
 
 #### Exit Strategy
 - **Primary Target**: 300% gain
@@ -270,6 +278,7 @@ RateLimitStrategy {
 - **Peak Load**: 1,000 tokens per hour
 - **Latency**: <100ms for critical decisions
 - **Throughput**: 50 transactions per second
+- **Decision Time**: <100ms for signal generation
 
 ## Scoring System (999 Points Total)
 
@@ -315,6 +324,50 @@ RateLimitStrategy {
   - Hashtag trends (40 points)
   - Cross-platform presence (31 points)
 
+## Signal Analysis
+
+### Positive Signals (Score Multipliers)
+1. **Rapid Organic Growth** (1.2x)
+   - 50%+ holder growth in 2 hours
+   - Natural distribution pattern
+   - Consistent volume increase
+
+2. **Strong Bonding Curve** (1.15x)
+   - 70%+ completion in <6 hours
+   - Steady progression
+   - No manipulation patterns
+
+3. **Quality Holders** (1.1x)
+   - >60% holders with ENS/known wallets
+   - Low concentration (no wallet >5%)
+   - Historical profitable traders
+
+4. **Social Momentum** (1.1x)
+   - Exponential mention growth
+   - Positive sentiment >80%
+   - Influencer organic interest
+
+### Negative Signals (Instant Disqualifiers)
+1. **Fake Volume/Wash Trading**
+   - Circular transactions
+   - Bot wallet patterns
+   - Unnatural price movements
+
+2. **Concentrated Holdings**
+   - Single wallet >10%
+   - Top 5 wallets >30%
+   - Hidden connected wallets
+
+3. **Social Manipulation**
+   - Bought followers/bots
+   - Coordinated shill campaigns
+   - Fake influencer promotions
+
+4. **Technical Red Flags**
+   - Honeypot mechanisms
+   - Hidden mint functions
+   - Suspicious contract patterns
+
 ## Technical Stack (Enhanced)
 
 ### Data Layer
@@ -353,37 +406,52 @@ RateLimitStrategy {
 ## Implementation Roadmap
 
 ### Phase 1: Foundation Enhancement (Weeks 1-2)
-1. **Streaming Optimization**
+1. **Enhanced Monitoring**
+   - Complete Pump.fun monitor with all 4 sub-monitors
+   - Optimize Raydium launchpad monitor
+   - Implement data persistence with batch operations
+
+2. **Streaming Optimization**
    - Implement multi-stream architecture
    - Add connection pool management
    - Deploy rate limiting system
 
-2. **Caching Infrastructure**
+3. **Caching Infrastructure**
    - Set up multi-tier cache
    - Implement cache warming strategies
    - Add cache invalidation logic
 
 ### Phase 2: Intelligence Layer (Weeks 3-4)
-1. **Progressive Enrichment**
+1. **Scoring System**
+   - Full 999-point implementation
+   - Real-time score updates
+   - Historical score tracking
+
+2. **Progressive Enrichment**
    - Build staged enrichment pipeline
    - Implement priority-based processing
    - Add data quality metrics
 
-2. **ML Enhancement**
-   - Collect enhanced feature set
-   - Train improved models
-   - Deploy A/B testing framework
+3. **ML Foundation**
+   - Data collection pipeline
+   - Feature engineering
+   - Initial model training with XGBoost + LSTM
 
-### Phase 3: Scale & Optimization (Weeks 5-6)
-1. **Performance Tuning**
+### Phase 3: Scale & Automation (Weeks 5-6)
+1. **Trading Engine**
+   - Signal generation with sub-100ms latency
+   - Paper trading mode
+   - Performance tracking
+
+2. **Performance Tuning**
    - Optimize for 100k tokens/week
    - Reduce latency to <50ms
    - Implement horizontal scaling
 
-2. **Cost Optimization**
-   - Monitor API usage patterns
-   - Implement cost-based routing
-   - Optimize cache hit rates
+3. **ML Integration**
+   - Model deployment
+   - Real-time predictions
+   - Feedback loop implementation
 
 ### Phase 4: Production Hardening (Weeks 7-8)
 1. **Reliability**
@@ -395,6 +463,11 @@ RateLimitStrategy {
    - Enhanced monitoring
    - Performance profiling
    - Cost tracking dashboards
+
+3. **Production Readiness**
+   - Error handling improvements
+   - Documentation completion
+   - Load testing validation
 
 ## Performance Metrics
 
@@ -433,30 +506,76 @@ RateLimitStrategy {
 - **Rate Limits**: Token bucket with burst capacity
 - **Data Quality**: Validation and reconciliation layers
 - **Latency Spikes**: Circuit breakers and timeouts
+- **System Failure**: Redundancy and graceful degradation
+
+### Market Risks
+- **Rug Pulls**: Multi-signal validation before entry
+- **Liquidity**: Minimum liquidity requirements
+- **Slippage**: Dynamic position sizing
 
 ### Operational Risks
 - **Cost Overruns**: Real-time usage monitoring
 - **Compliance**: Adhere to all API terms of service
 - **Security**: API key rotation and encryption
 
+## Testing Strategy
+
+### Unit Testing
+- Component isolation
+- Mock external dependencies
+- 80%+ code coverage target
+
+### Integration Testing
+- End-to-end data flow
+- API integration verification
+- Performance benchmarking
+
+### Strategy Testing
+- Historical backtesting
+- Paper trading validation
+- A/B testing for improvements
+
+### Load Testing
+- 100k tokens/week simulation
+- Burst traffic handling
+- Resource utilization analysis
+
+## Success Metrics
+
+### Performance KPIs
+- **Win Rate**: >60% profitable trades
+- **Average Return**: >150% per winning trade
+- **Risk/Reward**: Minimum 1:3 ratio
+- **Processing Speed**: <100ms decision time
+
+### Operational KPIs
+- **Uptime**: 99.9% availability
+- **Data Coverage**: 95%+ of new launches detected
+- **Latency**: <50ms data ingestion
+- **Accuracy**: <5% false positive rate
+
 ## Next Steps
 
 1. **Immediate Actions**
    - Implement connection pool for Helius RPC
    - Deploy multi-tier caching system
-   - Optimize Pump.fun monitor for efficiency
+   - Complete Pump.fun monitor optimization
+   - Set up database batch operations
 
 2. **Short-term Goals**
    - Launch progressive enrichment pipeline
    - Deploy enhanced ML models
    - Implement cost tracking
+   - Deploy full scoring system
 
 3. **Long-term Vision**
    - Scale to 500k tokens/week
    - Sub-50ms decision latency
    - 90%+ prediction accuracy
+   - Multi-chain expansion
 
 ---
 
 *Last Updated: January 2025*
-*Version: 2.0.0*
+*Version: 3.0.0 (Combined)*
+*Combined from TECHNICAL_OVERVIEW.md v1.0.0 and TECHNICAL_OVERVIEW_V2.md v2.0.0*

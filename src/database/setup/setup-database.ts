@@ -1,10 +1,11 @@
-import { pool } from '../config';
+import { getDbPool } from '../connection';
 import fs from 'fs';
 import path from 'path';
 
 async function setupDatabase() {
   console.log('🚀 Starting database setup...\n');
   
+  const pool = getDbPool();
   const client = await pool.connect();
   
   try {

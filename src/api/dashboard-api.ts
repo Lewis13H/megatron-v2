@@ -51,6 +51,7 @@ router.get('/tokens', async (req, res) => {
         t.name,
         t.metadata->>'image' as image_uri,
         t.created_at as token_created_at,
+        t.platform,
         COALESCE(p.latest_price_usd, p.initial_price_usd, 0) as price_usd,
         COALESCE(p.latest_price, p.initial_price, 0) as price_sol,
         0 as total_score,
@@ -110,7 +111,7 @@ router.get('/tokens', async (req, res) => {
           sol: 0
         },
         bondingCurveProgress: row.bonding_curve_progress !== null && row.bonding_curve_progress !== undefined ? parseFloat(row.bonding_curve_progress) : null,
-        platform: row.bonding_curve_progress !== null ? 'pumpfun' : 'raydium'
+        platform: row.platform || 'unknown'
       };
     });
 

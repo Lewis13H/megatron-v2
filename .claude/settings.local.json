@@ -79,7 +79,23 @@
       "Bash(if exist node_modules\\.cache rmdir /s /q node_modules\\.cache)",
       "Bash(timeout:*)",
       "Bash(SOL_PRICE_UPDATE_INTERVAL=1000 SOL_PRICE_CACHE_TIME=800 timeout 5 npm run sol-price:updater)",
-      "Bash(git check-ignore:*)"
+      "Bash(git check-ignore:*)",
+      "Bash(git check-ignore:*)",
+      "Bash(timeout:*)",
+      "Bash(git pull:*)",
+      "Bash(wmic process where \"name='node.exe'\" get ProcessId,CommandLine:*)",
+      "Bash(wmic process where:*)",
+      "WebFetch(domain:raydium.io)",
+      "Bash(wmic process where \"name='node.exe'\" get ProcessId,CommandLine:*)",
+      "Bash(diff:*)",
+      "WebFetch(domain:docs.bitquery.io)",
+      "Bash(pg_ctl status:*)",
+      "Bash(sc query:*)",
+      "Bash(net start:*)",
+      "Bash(wmic:*)",
+      "Bash(copy raydium-launchpad-account-monitor.ts raydium-launchpad-account-monitor.ts.backup)",
+      "Bash(copy:*)",
+      "Bash(npm test)"
     ],
     "deny": []
   }

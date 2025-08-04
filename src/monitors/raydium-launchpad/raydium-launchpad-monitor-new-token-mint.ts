@@ -10,7 +10,7 @@ import Client, {
   SubscribeRequestFilterTransactions,
 } from "@triton-one/yellowstone-grpc";
 import { PublicKey, VersionedTransactionResponse, Connection } from "@solana/web3.js";
-import { Idl } from "@coral-xyz/anchor";
+import { Idl, BorshAccountsCoder } from "@coral-xyz/anchor";
 import { SolanaParser } from "@shyft-to/solana-transaction-parser";
 import { SubscribeRequestPing } from "@triton-one/yellowstone-grpc/dist/types/grpc/geyser";
 import { TransactionFormatter } from "./utils/transaction-formatter";
@@ -18,6 +18,10 @@ import { bnLayoutFormatter } from "./utils/bn-layout-formatter";
 import raydiumLaunchpadIdl from "./idls/raydium_launchpad.json";
 import { saveRaydiumToken } from "../../database/monitor-integration";
 import { getDbPool } from "../../database";
+
+// This monitor focuses on detecting new token launches on Raydium Launchpad
+// It captures the initial token metadata and pool creation details
+// The account monitor (raydium-launchpad-account-monitor.ts) handles all subsequent price updates
 
 interface SubscribeRequest {
   accounts: { [key: string]: SubscribeRequestFilterAccounts };
@@ -46,6 +50,9 @@ const TXN_FORMATTER = new TransactionFormatter();
 const RAYDIUM_LAUNCHPAD_PROGRAM_ID = new PublicKey(
   "LanMV9sAd7wArD4vJFi2qDdfnVhFxYSUg6eADduJ3uj"
 );
+
+// Initialize account decoder
+const coder = new BorshAccountsCoder(raydiumLaunchpadIdl as Idl);
 const RAYDIUM_LAUNCHPAD_IX_PARSER = new SolanaParser([]);
 RAYDIUM_LAUNCHPAD_IX_PARSER.addParserFromIdl(
   RAYDIUM_LAUNCHPAD_PROGRAM_ID.toBase58(),
@@ -274,6 +281,31 @@ async function fetchTokenMetadata(mintAddress: string): Promise<TokenMetadata | 
   }
 }
 
+async function fetchPoolAccountData(poolAddress: string) {
+  try {
+    const poolPubkey = new PublicKey(poolAddress);
+    const accountInfo = await connection.getAccountInfo(poolPubkey);
+    
+    if (!accountInfo) {
+      console.log("Pool account not found");
+      return null;
+    }
+    
+    // Decode the pool state
+    const poolState = coder.decodeAny(accountInfo.data);
+    
+    if (poolState) {
+      bnLayoutFormatter(poolState);
+      return poolState;
+    }
+    
+    return null;
+  } catch (error) {
+    console.error("Error fetching pool account:", error);
+    return null;
+  }
+}
+
 async function handleStream(client: Client, args: SubscribeRequest) {
   console.log("Starting Stream...")
   const stream = await client.subscribe();
@@ -337,19 +369,63 @@ async function handleStream(client: Client, args: SubscribeRequest) {
         tokenMetadata.metadataUri = tokenMetadata.metadataUri.replace(/\u0000/g, '').trim();
       }
       
-      // Get current SOL price for USD calculations
+      // Debug: Log the instruction args to understand the format
+      console.log("Initialize instruction args:", JSON.stringify(initializeInstruction.args, null, 2));
+      
+      // Fetch the pool account data to get accurate virtual reserves
+      let poolAccountData = null;
+      if (poolState) {
+        // Wait a bit for the account to be created
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        poolAccountData = await fetchPoolAccountData(poolState.toString());
+        if (poolAccountData) {
+          console.log("Pool account data fetched successfully");
+          console.log(`  Virtual base (tokens): ${poolAccountData.virtual_base}`);
+          console.log(`  Virtual quote (SOL): ${poolAccountData.virtual_quote}`);
+        }
+      }
+      
+      // Calculate price from virtual reserves
       let priceUsd = null;
+      let priceInSol = null;
+      
       try {
-        const dbPool = getDbPool();
-        const solPriceResult = await dbPool.query(
-          'SELECT price_usd FROM sol_usd_prices ORDER BY price_time DESC LIMIT 1'
-        );
-        if (solPriceResult.rows.length > 0 && (initializeInstruction.args as any)?.initial_price) {
-          const solPrice = parseFloat(solPriceResult.rows[0].price_usd);
-          priceUsd = parseFloat((initializeInstruction.args as any).initial_price) * solPrice;
+        // Use actual pool account data if available
+        if (poolAccountData && poolAccountData.virtual_base && poolAccountData.virtual_quote) {
+          const virtualTokenReserves = parseFloat(poolAccountData.virtual_base);
+          const virtualSolReserves = parseFloat(poolAccountData.virtual_quote);
+          
+          // Price calculation: SOL has 9 decimals, tokens have 6 decimals
+          priceInSol = (virtualSolReserves / 1e9) / (virtualTokenReserves / 1e6);
+          
+          console.log(`Initial price calculation from pool virtual reserves:`);
+          console.log(`  Virtual SOL reserves: ${virtualSolReserves} lamports (${(virtualSolReserves / 1e9).toFixed(6)} SOL)`);
+          console.log(`  Virtual token reserves: ${virtualTokenReserves} smallest units (${(virtualTokenReserves / 1e6).toFixed(2)} tokens)`);
+          console.log(`  Initial price: ${priceInSol.toExponential(6)} SOL per token`);
+          
+          // Calculate market cap
+          const totalSupplyTokens = 1_000_000_000; // 1B tokens
+          const marketCapSol = priceInSol * totalSupplyTokens;
+          console.log(`  Initial market cap: ${marketCapSol.toFixed(2)} SOL`);
+        } else {
+          // If pool account data not available, we'll wait for the account monitor to provide pricing
+          console.log("Pool account data not available yet. Initial price will be set by account monitor.");
+        }
+        
+        // Calculate USD price if we have SOL price
+        if (priceInSol && priceInSol > 0) {
+          const dbPool = getDbPool();
+          const solPriceResult = await dbPool.query(
+            'SELECT price_usd FROM sol_usd_prices ORDER BY price_time DESC LIMIT 1'
+          );
+          if (solPriceResult.rows.length > 0) {
+            const solPrice = parseFloat(solPriceResult.rows[0].price_usd);
+            priceUsd = priceInSol * solPrice;
+            console.log(`USD price: ${priceInSol} SOL * $${solPrice} = $${priceUsd}`);
+          }
         }
       } catch (error) {
-        console.error('Error fetching SOL price:', error);
+        console.error('Error calculating price:', error);
       }
       
       const output = {
@@ -358,9 +434,8 @@ async function handleStream(client: Client, args: SubscribeRequest) {
         poolState: poolState?.toString(),
         baseTokenMint: baseTokenMint?.toString(),
         quoteTokenMint: quoteTokenMint?.toString() === 'So11111111111111111111111111111111111111112' ? 'SOL' : quoteTokenMint?.toString(),
-        initialPrice: (initializeInstruction.args as any)?.initial_price,
+        initialPrice: priceInSol ? priceInSol.toString() : null,
         initialPriceUsd: priceUsd,
-        initialLiquidity: (initializeInstruction.args as any)?.initial_liquidity,
         creator: creator?.toString() || 'unknown',
         tokenMetadata: tokenMetadata,
         solscanUrl: `https://solscan.io/tx/${txn.transaction.signatures[0]}`,
@@ -371,8 +446,9 @@ async function handleStream(client: Client, args: SubscribeRequest) {
         new Date(),
         ":",
         `New token mint detected`,
-        `\n💰 Initial Price:` + (output.initialPrice ? ` ${output.initialPrice} SOL` : ' N/A') + (priceUsd ? ` ($${priceUsd.toFixed(9)} USD)` : ''),
+        `\n💰 Initial Price:` + (priceInSol ? ` ${priceInSol.toExponential(6)} SOL` : ' Pending (will be set by account monitor)') + (priceUsd ? ` ($${priceUsd.toExponential(6)} USD)` : ''),
         `\n📊 Token: ${tokenMetadata?.symbol || 'Unknown'} (${tokenMetadata?.name || 'Unknown'})`,
+        `\n🏊 Pool: ${poolState?.toString() || 'Unknown'}`,
         `\n${JSON.stringify(output, null, 2)}\n`
       );
       
