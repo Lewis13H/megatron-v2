@@ -90,7 +90,7 @@ class Dashboard {
         <td class="progress">${this.renderProgressBar(token.bondingCurveProgress)}</td>
         <td class="score ${this.getScoreClass(token.scores.total, 999)}">${Math.round(token.scores.total)}</td>
         <td class="score ${this.getScoreClass(token.scores.technical, 333)}" title="Market Cap: ${Math.round(token.scores.marketCap)}/100 | Bonding Curve: ${Math.round(token.scores.bondingCurve)}/83 | Trading Health: ${Math.round(token.scores.tradingHealth)}/75 | Sell-off Response: ${Math.round(token.scores.selloffResponse)}/75">${Math.round(token.scores.technical)}${token.isSelloffActive ? ' ⚠️' : ''}</td>
-        <td class="score ${this.getScoreClass(token.scores.holder, 333)}">${token.scores.holder}</td>
+        <td class="score ${this.getScoreClass(token.scores.holder, 333)}" title="${this.getHolderScoreTooltip(token)}">${Math.round(token.scores.holder)}</td>
         <td class="score ${this.getScoreClass(token.scores.social, 333)}">${token.scores.social}</td>
         <td class="age">${token.age}</td>
         <td class="txns">${this.formatNumber(token.txns24h)}</td>
@@ -220,6 +220,52 @@ class Dashboard {
     
     // Return as-is for other URLs
     return imageUri;
+  }
+
+  getHolderScoreTooltip(token) {
+    // If no holder score data, return a default message
+    if (!token.scores.holder || token.scores.holder === 0) {
+      return 'No holder data available (requires 10-25% bonding curve progress)';
+    }
+
+    const parts = [];
+    
+    // Distribution score breakdown
+    parts.push(`Distribution: ${Math.round(token.scores.holderDistribution)}/111`);
+    
+    // Quality score breakdown
+    parts.push(`Quality: ${Math.round(token.scores.holderQuality)}/111`);
+    
+    // Activity score breakdown
+    parts.push(`Activity: ${Math.round(token.scores.holderActivity)}/111`);
+    
+    // Add key metrics if available
+    if (token.scores.uniqueHolders) {
+      parts.push(`| ${token.scores.uniqueHolders} holders`);
+    }
+    
+    if (token.scores.giniCoefficient !== null && token.scores.giniCoefficient !== undefined) {
+      parts.push(`| Gini: ${token.scores.giniCoefficient.toFixed(3)}`);
+    }
+    
+    if (token.scores.top10Concentration !== null && token.scores.top10Concentration !== undefined) {
+      parts.push(`| Top 10: ${token.scores.top10Concentration.toFixed(1)}%`);
+    }
+    
+    if (token.scores.botRatio !== null && token.scores.botRatio !== undefined) {
+      const botPercentage = (token.scores.botRatio * 100).toFixed(1);
+      if (token.scores.botRatio > 0.3) {
+        parts.push(`| ⚠️ Bots: ${botPercentage}%`);
+      } else {
+        parts.push(`| Bots: ${botPercentage}%`);
+      }
+    }
+    
+    if (token.scores.avgWalletAge !== null && token.scores.avgWalletAge !== undefined) {
+      parts.push(`| Avg age: ${Math.round(token.scores.avgWalletAge)}d`);
+    }
+    
+    return parts.join(' ');
   }
 
   updateConnectionStatus(connected) {

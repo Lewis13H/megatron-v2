@@ -57,15 +57,21 @@ router.get('/tokens', async (req, res) => {
           unique_holders,
           avg_wallet_age_days,
           bot_ratio,
-          organic_growth_score
+          organic_growth_score,
+          is_frozen
         FROM holder_scores
-        ORDER BY token_id, score_time DESC
+        ORDER BY token_id, is_frozen DESC, score_time DESC  -- Prefer frozen scores
       )
       SELECT 
         t.mint_address as address,
         t.symbol,
         t.name,
-        t.metadata->>'image' as image_uri,
+        COALESCE(
+          t.metadata->'offChainMetadata'->>'image',
+          t.metadata->>'image',
+          t.metadata->>'imageUri',
+          t.metadata->>'image_uri'
+        ) as image_uri,
         t.created_at as token_created_at,
         t.platform,
         COALESCE(p.latest_price_usd, p.initial_price_usd, 0) as price_usd,

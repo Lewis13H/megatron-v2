@@ -7,10 +7,10 @@ The Holder Score is a sophisticated wallet distribution analysis system that eva
 ### Activation Criteria
 - **Primary Trigger**: Bonding curve progress between 10-25%
 - **Secondary Requirements**:
-  - Minimum 50 unique holders
-  - At least 100 transactions
+  - Minimum 5 unique holders
+  - At least 3 transactions
   - 30 minutes since token creation
-- **Deactivation**: Score freezes at 25% progress and transitions to mature token analysis
+- **Deactivation**: Score freezes at 100% progress and transitions to mature token analysis
 
 ## Scoring System Breakdown (333 Points Total)
 

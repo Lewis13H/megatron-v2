@@ -1,6 +1,7 @@
 import { Helius } from "helius-sdk";
 import { Connection, PublicKey } from "@solana/web3.js";
 import { saveHolderScore, getLatestHolderScore } from "../database/monitor-integration";
+import { getDbPool } from "../database/connection";
 
 interface HolderScore {
   total: number;
@@ -52,18 +53,74 @@ export class HolderScoreAnalyzer {
   async analyzeToken(
     mint: string, 
     bondingCurveProgress: number,
-    transactions?: TokenTransaction[]
+    transactions?: TokenTransaction[],
+    tokenCreationTime?: Date
   ): Promise<HolderScore | null> {
-    // Check activation criteria
+    // Check primary activation criteria
     if (bondingCurveProgress < 10 || bondingCurveProgress > 25) {
+      console.log(`Token outside activation range: ${bondingCurveProgress.toFixed(2)}% (requires 10-25%)`);
       return null;
     }
     
+    // Check if we need to freeze the score (at or near 100% progress)
+    if (bondingCurveProgress >= 95) {
+      // Check if we have an existing score to freeze
+      const existingScore = await getLatestHolderScore(mint);
+      if (existingScore && !existingScore.is_frozen && bondingCurveProgress >= 100) {
+        console.log(`Token has graduated (${bondingCurveProgress}% progress), freezing existing score`);
+        await this.freezeHolderScore(mint);
+      }
+      
+      // Return the frozen score if available
+      if (existingScore?.is_frozen) {
+        console.log(`Returning frozen score for graduated token`);
+        return {
+          total: existingScore.total_score,
+          distribution: existingScore.distribution_score,
+          quality: existingScore.quality_score,
+          activity: existingScore.activity_score,
+          timestamp: new Date(existingScore.score_time).getTime(),
+          bondingCurveProgress: existingScore.bonding_curve_progress,
+          details: {
+            giniCoefficient: existingScore.gini_coefficient,
+            top10Concentration: existingScore.top_10_concentration,
+            uniqueHolders: existingScore.unique_holders,
+            avgWalletAge: existingScore.avg_wallet_age_days,
+            botRatio: existingScore.bot_ratio,
+            organicGrowthScore: existingScore.organic_growth_score
+          }
+        };
+      }
+      
+      if (bondingCurveProgress >= 100) {
+        console.log(`Token graduated but no score to freeze`);
+        return null;
+      }
+    }
+    
     try {
+      // Check secondary activation criteria
+      
+      // 1. Check token age (30 minutes minimum)
+      if (tokenCreationTime) {
+        const tokenAgeMinutes = (Date.now() - tokenCreationTime.getTime()) / (1000 * 60);
+        if (tokenAgeMinutes < 30) {
+          console.log(`Token too young: ${tokenAgeMinutes.toFixed(1)} minutes (minimum 30 minutes required)`);
+          return null;
+        }
+      }
+      
+      // 2. Check transaction count (minimum 3)
+      if (transactions && transactions.length < 3) {
+        console.log(`Insufficient transactions: ${transactions.length} (minimum 3 required)`);
+        return null;
+      }
+      
       // Fetch all token holders
       console.log(`Fetching holders for token ${mint}...`);
       const holders = await this.fetchAllHolders(mint);
       
+      // 3. Check holder count (minimum 5)
       if (holders.length < 5) {
         console.log(`Insufficient holders (${holders.length}), minimum 5 required`);
         return null;
@@ -372,6 +429,33 @@ export class HolderScoreAnalyzer {
     const mean = values.reduce((a, b) => a + b, 0) / values.length;
     const squaredDiffs = values.map(v => Math.pow(v - mean, 2));
     return squaredDiffs.reduce((a, b) => a + b, 0) / values.length;
+  }
+  
+  /**
+   * Freeze the holder score when token graduates (reaches 100% bonding curve)
+   */
+  private async freezeHolderScore(tokenMint: string): Promise<void> {
+    try {
+      const pool = getDbPool();
+      
+      // Update the latest score to be frozen
+      const query = `
+        UPDATE holder_scores
+        SET is_frozen = TRUE
+        WHERE token_id = (SELECT id FROM tokens WHERE mint_address = $1)
+          AND score_time = (
+            SELECT MAX(score_time) 
+            FROM holder_scores hs2 
+            WHERE hs2.token_id = holder_scores.token_id
+          )
+          AND is_frozen = FALSE
+      `;
+      
+      await pool.query(query, [tokenMint]);
+      console.log(`Frozen holder score for graduated token: ${tokenMint}`);
+    } catch (error) {
+      console.error(`Error freezing holder score for ${tokenMint}:`, error);
+    }
   }
 }
 

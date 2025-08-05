@@ -8,6 +8,8 @@ interface TokenToAnalyze {
   symbol: string;
   name: string;
   bondingCurveProgress: number;
+  createdAt?: Date;
+  transactionCount?: number;
 }
 
 export class HolderSnapshotService {
@@ -113,13 +115,18 @@ export class HolderSnapshotService {
         t.mint_address,
         t.symbol,
         t.name,
-        p.bonding_curve_progress
+        t.created_at,
+        p.bonding_curve_progress,
+        (SELECT COUNT(*) FROM transactions WHERE token_id = t.id) as transaction_count
       FROM tokens t
       JOIN pools p ON t.id = p.token_id
       WHERE p.platform = 'pumpfun'
         AND p.bonding_curve_progress >= 10
         AND p.bonding_curve_progress <= 25
         AND p.status = 'active'
+        -- Secondary activation criteria
+        AND t.created_at < NOW() - INTERVAL '30 minutes'  -- Token age requirement
+        AND (SELECT COUNT(*) FROM transactions WHERE token_id = t.id) >= 3  -- Min transactions
         AND NOT EXISTS (
           -- Skip if we already have a recent snapshot (within last hour)
           SELECT 1 
@@ -138,6 +145,8 @@ export class HolderSnapshotService {
       symbol: row.symbol,
       name: row.name,
       bondingCurveProgress: parseFloat(row.bonding_curve_progress),
+      createdAt: new Date(row.created_at),
+      transactionCount: parseInt(row.transaction_count)
     }));
   }
 
@@ -146,6 +155,13 @@ export class HolderSnapshotService {
    */
   private async processToken(token: TokenToAnalyze): Promise<void> {
     console.log(`Processing holder data for ${token.symbol} (${token.bondingCurveProgress.toFixed(2)}% progress)`);
+    if (token.createdAt) {
+      const ageMinutes = (Date.now() - token.createdAt.getTime()) / (1000 * 60);
+      console.log(`  Token age: ${ageMinutes.toFixed(1)} minutes`);
+    }
+    if (token.transactionCount !== undefined) {
+      console.log(`  Transaction count: ${token.transactionCount}`);
+    }
     
     try {
       // 1. Fetch all token holders
@@ -177,7 +193,9 @@ export class HolderSnapshotService {
       // 5. Calculate and save holder score
       const score = await this.holderScoreAnalyzer.analyzeToken(
         token.mintAddress,
-        token.bondingCurveProgress
+        token.bondingCurveProgress,
+        undefined, // transactions - could be fetched if needed
+        token.createdAt
       );
 
       if (score) {
