@@ -386,8 +386,8 @@ body {
     color: #ff3b69;
 }
 
-/* Technical score specific styling */
-td.score:nth-child(6) {
+/* Total score specific styling */
+td.score:nth-child(5) {
     background-color: rgba(20, 241, 149, 0.05);
     border-left: 2px solid rgba(20, 241, 149, 0.2);
     border-right: 2px solid rgba(20, 241, 149, 0.2);
