@@ -162,12 +162,57 @@ Each monitor follows this pattern:
 - **technical_scores**: Time-series technical scoring data (hypertable)
 - **latest_technical_scores**: View showing current scores per token
 
-### Monitor Integration
-Monitors automatically save data using:
+### Database Integration (Updated January 2025)
+The database layer has been consolidated into a unified MonitorService:
+
 ```typescript
-import { savePumpfunToken } from '../../database/monitor-integration';
-import { saveRaydiumToken } from '../../database/monitor-integration';
+import { monitorService } from '../../database';
+
+// Save token
+const tokenId = await monitorService.saveToken({
+  mint_address: '...',
+  symbol: '...',
+  // ... other fields
+});
+
+// Save pool
+const poolId = await monitorService.savePool({
+  pool_address: '...',
+  token_id: tokenId,
+  // ... other fields
+});
+
+// Save transactions (with batching)
+await monitorService.saveTransactionBatch(transactions);
+
+// Save holder scores
+await monitorService.saveHolderScore(tokenMint, score);
+
+// Get latest holder score
+const score = await monitorService.getLatestHolderScore(tokenMint);
 ```
+
+#### Database Architecture
+```
+src/database/
+├── monitor-service.ts    # Unified service for all operations
+├── connection.ts         # Connection pool with retry logic
+├── base-operations.ts    # Base class for operations
+├── cache.ts             # In-memory cache (5min TTL)
+├── types.ts             # All TypeScript interfaces
+└── operations/          # Individual operation classes
+    ├── token.ts
+    ├── pool.ts
+    ├── transaction.ts   # Supports batch operations
+    └── price.ts
+```
+
+**Key Features:**
+- Singleton MonitorService for all database operations
+- Connection pooling with automatic retry
+- Transaction batching (50 per batch)
+- Simple in-memory caching
+- Unified error handling
 
 ### Pump.fun Bonding Curve Mechanics
 - **Initial Virtual Token Reserves**: 1,073,000,000 tokens (1.073 billion)
@@ -261,6 +306,14 @@ const priceInSol = (virtualSolReserves / 1e9) / (virtualTokenReserves / 1e6);
   - ✅ Real-time score updates integrated with monitors
   - ✅ Dashboard display with tooltips and sorting
   - ✅ Standalone score monitor with alerts
+- ✅ **Database Consolidation** - COMPLETED January 2025:
+  - ✅ Unified MonitorService replacing separate integration files
+  - ✅ File reorganization with operations/ subdirectory
+  - ✅ Centralized TypeScript types in types.ts
+  - ✅ Added transaction batching (50 per batch)
+  - ✅ Implemented simple caching with 5-minute TTL
+  - ✅ Fixed all monitor compatibility issues
+  - ✅ Removed ~400 lines of duplicate code
 
 ### In Progress
 - 🔄 Enhanced error handling and reconnection logic
