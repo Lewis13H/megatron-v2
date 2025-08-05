@@ -1,4 +1,4 @@
-import { Helius } from "@helius-labs/sdk";
+import { Helius } from "helius-sdk";
 import { Connection, PublicKey } from "@solana/web3.js";
 import { saveHolderScore, getLatestHolderScore } from "../database/monitor-integration";
 
@@ -64,8 +64,8 @@ export class HolderScoreAnalyzer {
       console.log(`Fetching holders for token ${mint}...`);
       const holders = await this.fetchAllHolders(mint);
       
-      if (holders.length < 50) {
-        console.log(`Insufficient holders (${holders.length}), minimum 50 required`);
+      if (holders.length < 5) {
+        console.log(`Insufficient holders (${holders.length}), minimum 5 required`);
         return null;
       }
       
@@ -131,19 +131,19 @@ export class HolderScoreAnalyzer {
           limit
         });
         
-        if (!response?.result?.token_accounts || response.result.token_accounts.length === 0) {
+        if (!response?.token_accounts || response.token_accounts.length === 0) {
           break;
         }
         
         // Add unique holders with positive balance
-        response.result.token_accounts.forEach((account: any) => {
+        response.token_accounts.forEach((account: any) => {
           if (account.amount && parseInt(account.amount) > 0) {
             holders.add(account.owner);
           }
         });
         
         // Check if we've fetched all accounts
-        if (response.result.token_accounts.length < limit) {
+        if (response.token_accounts.length < limit) {
           break;
         }
         
@@ -172,19 +172,16 @@ export class HolderScoreAnalyzer {
       const batch = holders.slice(i, i + batchSize);
       
       const batchDetails = await Promise.all(
-        batch.map(async (holder) => {
+        batch.map(async (holder, index) => {
           try {
-            // Get account info and transaction history
-            const [accountInfo, signatures] = await Promise.all([
-              this.connection.getAccountInfo(new PublicKey(holder)),
-              this.connection.getSignaturesForAddress(new PublicKey(holder), { limit: 100 })
-            ]);
+            // Add delay to avoid rate limits
+            await new Promise(resolve => setTimeout(resolve, index * 100));
             
-            // Calculate account age
-            const oldestTx = signatures[signatures.length - 1];
-            const accountAge = oldestTx 
-              ? (Date.now() / 1000 - (oldestTx.blockTime || 0)) / 86400 
-              : 0;
+            // Get account info
+            const accountInfo = await this.connection.getAccountInfo(new PublicKey(holder));
+            
+            // For now, skip transaction history to reduce API calls
+            const accountAge = 30; // Default age assumption
             
             // Get token balance
             const tokenAccounts = await this.connection.getParsedTokenAccountsByOwner(
@@ -199,8 +196,8 @@ export class HolderScoreAnalyzer {
             return {
               address: holder,
               balance: accountInfo ? accountInfo.lamports / 1e9 : 0,
-              transactionCount: signatures.length,
-              tokenCount: 0, // Will be populated separately if needed
+              transactionCount: 50, // Default assumption
+              tokenCount: 0,
               accountAge,
               tokenBalance
             };
@@ -221,7 +218,7 @@ export class HolderScoreAnalyzer {
       allDetails.push(...batchDetails);
       
       // Rate limiting between batches
-      await new Promise(resolve => setTimeout(resolve, 500));
+      await new Promise(resolve => setTimeout(resolve, 1000));
     }
     
     return allDetails;

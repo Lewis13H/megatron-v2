@@ -43,8 +43,24 @@ router.get('/tokens', async (req, res) => {
     `);
     const solPriceUsd = solPriceResult.rows[0]?.price_usd || 200; // Default to $200 if no price
 
-    // Query to get real price data from pools table with technical scores
+    // Query to get real price data from pools table with technical scores and holder scores
     const query = `
+      WITH latest_holder_scores AS (
+        SELECT DISTINCT ON (token_id)
+          token_id,
+          total_score,
+          distribution_score,
+          quality_score,
+          activity_score,
+          gini_coefficient,
+          top_10_concentration,
+          unique_holders,
+          avg_wallet_age_days,
+          bot_ratio,
+          organic_growth_score
+        FROM holder_scores
+        ORDER BY token_id, score_time DESC
+      )
       SELECT 
         t.mint_address as address,
         t.symbol,
@@ -54,7 +70,7 @@ router.get('/tokens', async (req, res) => {
         t.platform,
         COALESCE(p.latest_price_usd, p.initial_price_usd, 0) as price_usd,
         COALESCE(p.latest_price, p.initial_price, 0) as price_sol,
-        COALESCE(lts.total_score, 0) as total_score,
+        COALESCE(lts.total_score, 0) + COALESCE(lhs.total_score, 0) as total_score,
         COALESCE(lts.total_score, 0) as technical_score,
         COALESCE(lts.market_cap_score, 0) as market_cap_score,
         COALESCE(lts.bonding_curve_score, 0) as bonding_curve_score,
@@ -62,23 +78,34 @@ router.get('/tokens', async (req, res) => {
         COALESCE(lts.selloff_response_score, 0) as selloff_response_score,
         COALESCE(lts.buy_sell_ratio, 0) as buy_sell_ratio,
         lts.is_selloff_active,
-        0 as holder_score,
+        COALESCE(lhs.total_score, 0) as holder_score,
+        COALESCE(lhs.distribution_score, 0) as holder_distribution_score,
+        COALESCE(lhs.quality_score, 0) as holder_quality_score,
+        COALESCE(lhs.activity_score, 0) as holder_activity_score,
+        lhs.gini_coefficient,
+        lhs.top_10_concentration,
+        lhs.unique_holders,
+        lhs.avg_wallet_age_days,
+        lhs.bot_ratio,
+        lhs.organic_growth_score,
         0 as social_score,
-        0 as txns_24h,
+        (SELECT COUNT(*) FROM transactions WHERE token_id = t.id AND block_time > NOW() - INTERVAL '24 hours') as txns_24h,
         0 as makers_24h,
         EXTRACT(epoch FROM (NOW() - t.created_at)) as age_seconds,
-        0 as volume_24h_usd,
+        (SELECT COALESCE(SUM(sol_amount), 0) FROM transactions WHERE token_id = t.id AND block_time > NOW() - INTERVAL '24 hours' AND type IN ('buy', 'sell')) as volume_24h_sol,
         0 as reserves_sol,
         0 as liquidity_usd,
         p.bonding_curve_progress as bonding_curve_progress
       FROM tokens t
       LEFT JOIN pools p ON t.id = p.token_id
       LEFT JOIN latest_technical_scores lts ON t.id = lts.token_id
+      LEFT JOIN latest_holder_scores lhs ON t.id = lhs.token_id
       WHERE t.created_at > NOW() - INTERVAL '30 days'
         AND t.symbol IS NOT NULL
       ORDER BY 
         CASE 
-          WHEN lts.total_score IS NOT NULL THEN lts.total_score 
+          WHEN (COALESCE(lts.total_score, 0) + COALESCE(lhs.total_score, 0)) > 0 
+          THEN (COALESCE(lts.total_score, 0) + COALESCE(lhs.total_score, 0))
           ELSE -1 
         END DESC,
         t.created_at DESC
@@ -108,21 +135,32 @@ router.get('/tokens', async (req, res) => {
         scores: {
           total: parseFloat(row.total_score) || 0,
           technical: parseFloat(row.technical_score) || 0,
-          holder: row.holder_score,
+          holder: parseFloat(row.holder_score) || 0,
           social: row.social_score,
           // Technical score breakdown
           marketCap: parseFloat(row.market_cap_score) || 0,
           bondingCurve: parseFloat(row.bonding_curve_score) || 0,
           tradingHealth: parseFloat(row.trading_health_score) || 0,
-          selloffResponse: parseFloat(row.selloff_response_score) || 0
+          selloffResponse: parseFloat(row.selloff_response_score) || 0,
+          // Holder score breakdown
+          holderDistribution: parseFloat(row.holder_distribution_score) || 0,
+          holderQuality: parseFloat(row.holder_quality_score) || 0,
+          holderActivity: parseFloat(row.holder_activity_score) || 0,
+          // Holder metrics
+          giniCoefficient: row.gini_coefficient ? parseFloat(row.gini_coefficient) : null,
+          top10Concentration: row.top_10_concentration ? parseFloat(row.top_10_concentration) : null,
+          uniqueHolders: row.unique_holders || null,
+          avgWalletAge: row.avg_wallet_age_days ? parseFloat(row.avg_wallet_age_days) : null,
+          botRatio: row.bot_ratio ? parseFloat(row.bot_ratio) : null,
+          organicGrowthScore: row.organic_growth_score ? parseFloat(row.organic_growth_score) : null
         },
         buySellRatio: parseFloat(row.buy_sell_ratio) || 0,
         isSelloffActive: row.is_selloff_active || false,
         age: formatAge(row.age_seconds),
         txns24h: row.txns_24h || 0,
         volume24h: {
-          usd: 0,
-          sol: 0
+          usd: parseFloat(row.volume_24h_sol || 0) * parseFloat(solPriceUsd),
+          sol: parseFloat(row.volume_24h_sol || 0)
         },
         makers24h: row.makers_24h || 0,
         liquidity: {

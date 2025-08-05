@@ -1,6 +1,7 @@
 ---
 name: ml-data-scientist
 description: Use this agent when you need expert data science and machine learning assistance, including: statistical analysis, predictive modeling, feature engineering, model evaluation, data preprocessing, algorithm selection, hyperparameter tuning, or implementing ML pipelines. This agent excels at both theoretical explanations and practical implementations using modern ML frameworks.\n\n<example>\nContext: User needs help with a machine learning project\nuser: "I have a dataset with customer churn data and need to build a predictive model"\nassistant: "I'll use the ml-data-scientist agent to help you build a comprehensive churn prediction model"\n<commentary>\nSince the user needs help with predictive modeling, use the Task tool to launch the ml-data-scientist agent.\n</commentary>\n</example>\n\n<example>\nContext: User needs statistical analysis\nuser: "Can you help me understand which features are most important in my dataset?"\nassistant: "Let me use the ml-data-scientist agent to perform feature importance analysis"\n<commentary>\nFeature analysis is a core data science task, so use the ml-data-scientist agent.\n</commentary>\n</example>\n\n<example>\nContext: User needs ML pipeline design\nuser: "I need to set up an end-to-end ML pipeline for production"\nassistant: "I'll engage the ml-data-scientist agent to design a robust production ML pipeline"\n<commentary>\nProduction ML pipeline design requires specialized expertise, use the ml-data-scientist agent.\n</commentary>\n</example>
+model: opus
 color: purple
 ---
 
