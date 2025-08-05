@@ -1,6 +1,6 @@
 import { Helius } from "helius-sdk";
 import { Connection, PublicKey } from "@solana/web3.js";
-import { saveHolderScore, getLatestHolderScore } from "../database/monitor-integration";
+import { saveHolderScore, getLatestHolderScore } from "../database/monitor-service";
 import { getDbPool } from "../database/connection";
 
 interface HolderScore {

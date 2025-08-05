@@ -1,7 +1,7 @@
 import dotenv from 'dotenv';
 import { HolderScoreAnalyzer } from '../scoring/holder-score-implementation';
 import { getHeliusService } from '../services/helius-api-service';
-import { getLatestHolderScore } from '../database/monitor-integration';
+import { getLatestHolderScore } from '../database/monitor-service';
 import { getDbPool } from '../database/connection';
 
 dotenv.config();

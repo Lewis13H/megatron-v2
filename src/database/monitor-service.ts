@@ -294,7 +294,108 @@ export class MonitorService extends BaseOperations {
     this.tokenPoolCache.clear();
     this.cacheTimestamps.clear();
   }
+
+  /**
+   * Save holder score to database
+   */
+  async saveHolderScore(tokenMint: string, score: any): Promise<any> {
+    try {
+      // First get the token ID
+      const token = await this.tokenOps.getByMintAddress(tokenMint);
+      
+      if (!token) {
+        console.error(`Token not found: ${tokenMint}`);
+        return null;
+      }
+      
+      const tokenId = token.id!;
+      
+      // Insert holder score
+      const query = `
+        INSERT INTO holder_scores (
+          token_id, score_time, bonding_curve_progress,
+          distribution_score, quality_score, activity_score, total_score,
+          gini_coefficient, top_10_concentration, unique_holders,
+          avg_wallet_age_days, bot_ratio, organic_growth_score,
+          score_details, red_flags, yellow_flags, positive_signals
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+        ON CONFLICT (token_id, score_time) DO UPDATE SET
+          distribution_score = $4,
+          quality_score = $5,
+          activity_score = $6,
+          total_score = $7,
+          gini_coefficient = $8,
+          top_10_concentration = $9,
+          unique_holders = $10,
+          avg_wallet_age_days = $11,
+          bot_ratio = $12,
+          organic_growth_score = $13,
+          score_details = $14,
+          red_flags = $15,
+          yellow_flags = $16,
+          positive_signals = $17
+        RETURNING *
+      `;
+      
+      const values = [
+        tokenId,
+        new Date(),
+        score.bondingCurveProgress,
+        Math.round(score.distribution),
+        Math.round(score.quality),
+        Math.round(score.activity),
+        Math.round(score.total),
+        score.details.giniCoefficient,
+        score.details.top10Concentration,
+        score.details.uniqueHolders,
+        score.details.avgWalletAge,
+        score.details.botRatio,
+        score.details.organicGrowthScore,
+        JSON.stringify(score.details),
+        score.redFlags || [],
+        score.yellowFlags || [],
+        score.positiveSignals || []
+      ];
+      
+      const result = await this.queryOne(query, values);
+      console.log(`💾 Saved holder score for ${tokenMint}: ${score.total}/333`);
+      
+      return result;
+    } catch (error) {
+      console.error('Error saving holder score:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Get latest holder score for a token
+   */
+  async getLatestHolderScore(tokenMint: string): Promise<any> {
+    try {
+      const query = `
+        SELECT hs.*, t.symbol, t.name
+        FROM holder_scores hs
+        JOIN tokens t ON hs.token_id = t.id
+        WHERE t.mint_address = $1
+        ORDER BY hs.score_time DESC
+        LIMIT 1
+      `;
+      
+      const result = await this.queryOne(query, [tokenMint]);
+      return result || null;
+    } catch (error) {
+      console.error('Error fetching holder score:', error);
+      return null;
+    }
+  }
 }
 
 // Export singleton instance
 export const monitorService = new MonitorService();
+
+// Export holder score functions for backward compatibility
+export const saveHolderScore = (tokenMint: string, score: any) => 
+  monitorService.saveHolderScore(tokenMint, score);
+
+export const getLatestHolderScore = (tokenMint: string) => 
+  monitorService.getLatestHolderScore(tokenMint);
