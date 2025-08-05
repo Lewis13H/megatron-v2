@@ -1,4 +1,10 @@
-import { TransactionOperations, Transaction } from './transaction-operations';
+/**
+ * @deprecated This file is being replaced by MonitorService (monitor-service.ts)
+ * Monitors should use: import { monitorService } from '../../database';
+ * Use monitorService.saveTransaction() or monitorService.saveTransactionBatch()
+ * This file will be removed after all monitors are migrated.
+ */
+import { TransactionOperations, Transaction } from './operations/transaction';
 import { getDbPool } from './connection';
 
 export interface MonitorTransaction {

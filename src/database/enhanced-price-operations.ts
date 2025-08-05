@@ -1,4 +1,9 @@
-import { PriceOperations, PriceCandle } from './price-operations';
+/**
+ * @deprecated This file is not actively used. Price operations with USD conversion
+ * are handled by SQL functions and views in the database.
+ * Consider removing this file in future cleanup.
+ */
+import { PriceOperations, PriceCandle } from './operations/price';
 
 export interface PriceCandleWithUSD extends PriceCandle {
     open_usd: number;

@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' http://localhost:* https://gateway.pinata.cloud https://*.ipfs.io; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src * data:; connect-src *">
+    <title>MEGATRON - gRPC Pool Monitor</title>
+    <link rel="stylesheet" href="grpc-pool-style.css">
+    <script src="grpc-pool.js"></script>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <div class="header-left">
+                <h1 class="header-title">MEGATRON</h1>
+                <span class="header-subtitle">gRPC Connection Pool Monitor</span>
+            </div>
+            <div class="header-right">
+                <a href="index.html" class="nav-link">← Back to Dashboard</a>
+                <div class="connection-status">
+                    <span class="status-dot active"></span>
+                    <span class="status-text">Connected</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Status Bar -->
+        <div class="status-bar">
+            <div class="status-section">
+                <div class="status-label">Connections</div>
+                <div class="status-value">
+                    <span id="connections-current">25</span>/<span id="connections-max">40</span>
+                    <span class="status-percent">(62.5%)</span>
+                </div>
+                <div class="status-bar-visual">
+                    <div class="bar-fill connections-fill" style="width: 62.5%"></div>
+                </div>
+            </div>
+            <div class="status-section">
+                <div class="status-label">Rate Limit</div>
+                <div class="status-value">
+                    <span id="rate-current">35</span>/<span id="rate-max">60</span>
+                    <span class="status-percent">(58.3%)</span>
+                </div>
+                <div class="status-bar-visual">
+                    <div class="bar-fill rate-fill" style="width: 58.3%"></div>
+                </div>
+            </div>
+            <div class="status-section">
+                <div class="status-label">Queue</div>
+                <div class="status-value">
+                    <span id="queue-depth">0</span> waiting
+                </div>
+                <div class="status-sublabel">Next token in <span id="next-token">1</span>s</div>
+            </div>
+            <div class="status-section">
+                <div class="status-label">Health Score</div>
+                <div class="status-value health-score">
+                    <span id="health-score">94</span>/100
+                </div>
+                <div class="status-bar-visual">
+                    <div class="bar-fill health-fill" style="width: 94%"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Monitor Grid -->
+        <div class="monitor-grid">
+            <div class="monitor-group">
+                <h3 class="group-title">High Frequency <span class="group-count">(4)</span></h3>
+                <div class="monitor-list">
+                    <div class="monitor-item active" data-monitor="pf-price">
+                        <div class="monitor-name">PF Price</div>
+                        <div class="monitor-status">
+                            <span class="status-indicator active"></span>
+                            <span class="stream-count">3</span> streams
+                        </div>
+                        <div class="monitor-stats">
+                            <span class="msg-rate">↑512 msg/s</span>
+                        </div>
+                    </div>
+                    <div class="monitor-item active" data-monitor="pf-trans">
+                        <div class="monitor-name">PF Trans</div>
+                        <div class="monitor-status">
+                            <span class="status-indicator active"></span>
+                            <span class="stream-count">3</span> streams
+                        </div>
+                        <div class="monitor-stats">
+                            <span class="msg-rate">↑387 msg/s</span>
+                        </div>
+                    </div>
+                    <div class="monitor-item idle" data-monitor="future-1">
+                        <div class="monitor-name">Future 1</div>
+                        <div class="monitor-status">
+                            <span class="status-indicator idle"></span>
+                            <span class="stream-count">0</span> streams
+                        </div>
+                        <div class="monitor-stats">
+                            <span class="msg-rate">idle</span>
+                        </div>
+                    </div>
+                    <div class="monitor-item idle" data-monitor="future-2">
+                        <div class="monitor-name">Future 2</div>
+                        <div class="monitor-status">
+                            <span class="status-indicator idle"></span>
+                            <span class="stream-count">0</span> streams
+                        </div>
+                        <div class="monitor-stats">
+                            <span class="msg-rate">idle</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="monitor-group">
+                <h3 class="group-title">Medium Frequency <span class="group-count">(3)</span></h3>
+                <div class="monitor-list">
+                    <div class="monitor-item active" data-monitor="pf-mint">
+                        <div class="monitor-name">PF Mint</div>
+                        <div class="monitor-status">
+                            <span class="status-indicator active"></span>
+                            <span class="stream-count">2</span> streams
+                        </div>
+                        <div class="monitor-stats">
+                            <span class="msg-rate">↑12 msg/s</span>
+                        </div>
+                    </div>
+                    <div class="monitor-item active" data-monitor="rl-mint">
+                        <div class="monitor-name">RL Mint</div>
+                        <div class="monitor-status">
+                            <span class="status-indicator active"></span>
+                            <span class="stream-count">2</span> streams
+                        </div>
+                        <div class="monitor-stats">
+                            <span class="msg-rate">↑8 msg/s</span>
+                        </div>
+                    </div>
+                    <div class="monitor-item active" data-monitor="graduation">
+                        <div class="monitor-name">Graduation</div>
+                        <div class="monitor-status">
+                            <span class="status-indicator active"></span>
+                            <span class="stream-count">1</span> stream
+                        </div>
+                        <div class="monitor-stats">
+                            <span class="msg-rate">↑2 msg/s</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="monitor-group">
+                <h3 class="group-title">Low Frequency <span class="group-count">(2)</span></h3>
+                <div class="monitor-list">
+                    <div class="monitor-item active" data-monitor="pf-account">
+                        <div class="monitor-name">PF Account</div>
+                        <div class="monitor-status">
+                            <span class="status-indicator active"></span>
+                            <span class="stream-count">1</span> stream
+                        </div>
+                        <div class="monitor-stats">
+                            <span class="msg-rate">↑156 msg/s</span>
+                        </div>
+                    </div>
+                    <div class="monitor-item idle" data-monitor="rl-account">
+                        <div class="monitor-name">RL Account</div>
+                        <div class="monitor-status">
+                            <span class="status-indicator idle"></span>
+                            <span class="stream-count">0</span> streams
+                        </div>
+                        <div class="monitor-stats">
+                            <span class="msg-rate">idle</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Performance Charts -->
+        <div class="charts-section">
+            <div class="chart-container">
+                <h3 class="chart-title">Connection Usage (Last 5 Minutes)</h3>
+                <div class="sparkline-chart" id="connections-chart">
+                    <canvas width="300" height="60"></canvas>
+                    <div class="chart-legend">
+                        <span class="legend-min">0</span>
+                        <span class="legend-current">25</span>
+                        <span class="legend-max">40</span>
+                    </div>
+                </div>
+            </div>
+            <div class="chart-container">
+                <h3 class="chart-title">Rate Limit Usage (Last 5 Minutes)</h3>
+                <div class="sparkline-chart" id="rate-chart">
+                    <canvas width="300" height="60"></canvas>
+                    <div class="chart-legend">
+                        <span class="legend-min">0</span>
+                        <span class="legend-current">35</span>
+                        <span class="legend-max">60</span>
+                    </div>
+                </div>
+            </div>
+            <div class="chart-container">
+                <h3 class="chart-title">Queue Depth (Last 5 Minutes)</h3>
+                <div class="sparkline-chart" id="queue-chart">
+                    <canvas width="300" height="60"></canvas>
+                    <div class="chart-legend">
+                        <span class="legend-min">0</span>
+                        <span class="legend-current">0</span>
+                        <span class="legend-max">10</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Stats Grid -->
+        <div class="stats-grid">
+            <div class="stat-box">
+                <div class="stat-label">Active Streams</div>
+                <div class="stat-value" id="active-streams">42</div>
+                <div class="stat-sublabel">across 25 connections</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-label">Avg Connection Time</div>
+                <div class="stat-value" id="avg-conn-time">124ms</div>
+                <div class="stat-sublabel">last 100 connections</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-label">Reconnects (1hr)</div>
+                <div class="stat-value" id="reconnects-hour">3</div>
+                <div class="stat-sublabel">2 monitors affected</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-label">Uptime</div>
+                <div class="stat-value" id="uptime">2h 34m</div>
+                <div class="stat-sublabel">since last restart</div>
+            </div>
+        </div>
+
+        <!-- Alerts Section -->
+        <div class="alerts-section">
+            <h3 class="alerts-title">System Alerts</h3>
+            <div id="alerts-container">
+                <div class="alert warning">
+                    <span class="alert-icon">⚠️</span>
+                    <span class="alert-text">Rate limit approaching 80% - consider stream consolidation</span>
+                    <span class="alert-time">2 min ago</span>
+                </div>
+                <div class="alert success">
+                    <span class="alert-icon">✓</span>
+                    <span class="alert-text">All monitors connected successfully</span>
+                    <span class="alert-time">15 min ago</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Connection Flow Visualization -->
+        <div class="flow-section">
+            <h3 class="flow-title">Live Connection Flow</h3>
+            <pre class="flow-diagram">
+┌─────────────────────────────────────────────────┐
+│ Monitors          Pool            Yellowstone   │
+│                                                 │
+│ PF-Price    ━━━┓                               │
+│ PF-Trans    ━━━┫━━━ Conn#1 ════════════════╗  │
+│                ┃     (6/15)                 ║  │
+│ PF-Mint     ━━━┫━━━ Conn#2 ════════════════╬══│
+│ RL-Mint     ━━━┛     (4/15)                 ║  │
+│                                             ║  │
+│ Graduation  ━━━━━━━ Conn#3 ════════════════╬══│
+│                      (1/15)                 ║  │
+│ PF-Account  ━━━┓                           ║  │
+│ RL-Account  ━━━┫━━━ Conn#4 ════════════════╝  │
+│                      (2/15)                    │
+└─────────────────────────────────────────────────┘
+━ = active stream, ═ = connection, (n/15) = streams/max
+            </pre>
+        </div>
+    </div>
+</body>
+</html>

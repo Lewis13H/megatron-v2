@@ -1,21 +1,8 @@
-import { BaseOperations } from './base-operations';
+import { BaseOperations } from '../base-operations';
+import { Token } from '../types';
 
-export interface Token {
-  id?: string;
-  mint_address: string;
-  symbol?: string;
-  name?: string;
-  decimals: number;
-  platform: 'pumpfun' | 'raydium_launchpad';
-  creation_signature: string;
-  creation_timestamp: Date;
-  creator_address: string;
-  initial_supply?: string;
-  metadata?: any;
-  is_graduated?: boolean;
-  graduation_timestamp?: Date;
-  graduation_signature?: string;
-}
+// Re-export Token type for backward compatibility
+export type { Token };
 
 export class TokenOperations extends BaseOperations {
   constructor() {
@@ -23,7 +10,45 @@ export class TokenOperations extends BaseOperations {
   }
 
   /**
-   * Insert a new token
+   * Create a new token (returns just the ID for MonitorService compatibility)
+   */
+  async create(token: Omit<Token, 'id'>): Promise<string> {
+    const query = `
+      INSERT INTO tokens (
+        mint_address, symbol, name, decimals, platform,
+        creation_signature, creation_timestamp, creator_address,
+        initial_supply, metadata, is_graduated, graduation_timestamp, graduation_signature
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+      ON CONFLICT (mint_address) DO UPDATE SET
+        symbol = EXCLUDED.symbol,
+        name = EXCLUDED.name,
+        metadata = EXCLUDED.metadata,
+        updated_at = NOW()
+      RETURNING id
+    `;
+
+    const values = [
+      token.mint_address,
+      token.symbol,
+      token.name,
+      token.decimals || 9,
+      token.platform,
+      token.creation_signature,
+      token.creation_timestamp,
+      token.creator_address,
+      token.initial_supply,
+      token.metadata,
+      token.is_graduated || false,
+      token.graduation_timestamp,
+      token.graduation_signature
+    ];
+
+    const result = await this.queryOne<{ id: string }>(query, values);
+    return result!.id;
+  }
+
+  /**
+   * Insert a new token (legacy method, returns full token)
    */
   async insertToken(token: Token): Promise<Token> {
     const query = `
@@ -60,19 +85,33 @@ export class TokenOperations extends BaseOperations {
   }
 
   /**
-   * Get token by mint address
+   * Get token by mint address (MonitorService compatibility)
    */
-  async getTokenByMint(mintAddress: string): Promise<Token | null> {
+  async getByMintAddress(mintAddress: string): Promise<Token | null> {
     const query = 'SELECT * FROM tokens WHERE mint_address = $1';
     return await this.queryOne<Token>(query, [mintAddress]);
   }
 
   /**
-   * Get token by ID
+   * Get token by mint address (legacy method)
    */
-  async getTokenById(id: string): Promise<Token | null> {
+  async getTokenByMint(mintAddress: string): Promise<Token | null> {
+    return this.getByMintAddress(mintAddress);
+  }
+
+  /**
+   * Get token by ID (MonitorService compatibility)
+   */
+  async getById(id: string): Promise<Token | null> {
     const query = 'SELECT * FROM tokens WHERE id = $1';
     return await this.queryOne<Token>(query, [id]);
+  }
+
+  /**
+   * Get token by ID (legacy method)
+   */
+  async getTokenById(id: string): Promise<Token | null> {
+    return this.getById(id);
   }
 
   /**

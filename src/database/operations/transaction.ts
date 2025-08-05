@@ -1,26 +1,8 @@
-import { BaseOperations } from './base-operations';
+import { BaseOperations } from '../base-operations';
+import { Transaction } from '../types';
 
-export interface Transaction {
-  signature: string;
-  pool_id: string;
-  token_id: string;
-  block_time: Date;
-  slot: number;
-  type: 'buy' | 'sell' | 'add_liquidity' | 'remove_liquidity';
-  user_address: string;
-  amount_in: string;
-  amount_in_decimals: number;
-  amount_out: string;
-  amount_out_decimals: number;
-  sol_amount?: number;
-  token_amount?: number;
-  price_per_token?: number;
-  protocol_fee?: string;
-  platform_fee?: string;
-  transaction_fee?: number;
-  success?: boolean;
-  raw_data?: any;
-}
+// Re-export Transaction type for backward compatibility
+export type { Transaction };
 
 export class TransactionOperations extends BaseOperations {
   constructor() {
@@ -70,7 +52,82 @@ export class TransactionOperations extends BaseOperations {
   }
 
   /**
-   * Bulk insert transactions efficiently
+   * Create single transaction (new simplified interface)
+   */
+  async create(transaction: Transaction): Promise<void> {
+    // Map to existing database columns
+    const query = `
+      INSERT INTO transactions (
+        signature, pool_id, token_id, block_time, slot, type,
+        user_address, amount_in, amount_in_decimals, amount_out, amount_out_decimals,
+        sol_amount, token_amount, price_per_token,
+        protocol_fee, platform_fee, transaction_fee,
+        success, raw_data
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+      ON CONFLICT (signature, block_time) DO NOTHING
+    `;
+
+    // Determine amount_in/out based on transaction type
+    let amountIn, amountOut, amountInDecimals, amountOutDecimals;
+    const solAmount = parseFloat(transaction.sol_amount);
+    const tokenAmount = parseFloat(transaction.token_amount);
+    
+    if (transaction.type === 'buy') {
+      amountIn = transaction.sol_amount;
+      amountInDecimals = 9; // SOL decimals
+      amountOut = transaction.token_amount;
+      amountOutDecimals = 6; // Default token decimals
+    } else {
+      amountIn = transaction.token_amount;
+      amountInDecimals = 6; // Default token decimals
+      amountOut = transaction.sol_amount;
+      amountOutDecimals = 9; // SOL decimals
+    }
+
+    const values = [
+      transaction.signature,
+      transaction.pool_id,
+      transaction.token_id,
+      transaction.block_time,
+      transaction.slot,
+      transaction.type,
+      transaction.user_address,
+      amountIn,
+      amountInDecimals,
+      amountOut,
+      amountOutDecimals,
+      solAmount || null,
+      tokenAmount || null,
+      transaction.price_per_token || null,
+      transaction.protocol_fee || null,
+      transaction.platform_fee || null,
+      transaction.transaction_fee || null,
+      transaction.success !== undefined ? transaction.success : true,
+      transaction.raw_data || transaction.metadata || null
+    ];
+
+    await this.execute(query, values);
+  }
+
+  /**
+   * Create batch of transactions (simplified interface for MonitorService)
+   */
+  async createBatch(transactions: Transaction[]): Promise<void> {
+    if (transactions.length === 0) return;
+
+    // PostgreSQL has a limit of ~65,535 parameters per query
+    // With 17 fields per transaction, we can safely do ~3000 at a time
+    const BATCH_SIZE = 1000;
+
+    // Process in chunks if needed
+    for (let i = 0; i < transactions.length; i += BATCH_SIZE) {
+      const batch = transactions.slice(i, i + BATCH_SIZE);
+      await this._insertBatchSimple(batch);
+    }
+  }
+
+  /**
+   * Bulk insert transactions efficiently (legacy interface)
    */
   async bulkInsertTransactions(transactions: Transaction[]): Promise<number> {
     if (transactions.length === 0) return 0;
@@ -88,6 +145,73 @@ export class TransactionOperations extends BaseOperations {
     }
 
     return totalInserted;
+  }
+
+  private async _insertBatchSimple(transactions: Transaction[]): Promise<void> {
+    const values: any[] = [];
+    const placeholders: string[] = [];
+    
+    transactions.forEach((tx, index) => {
+      const offset = index * 19; // 19 fields per transaction (same as legacy)
+      placeholders.push(
+        `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, 
+          $${offset + 6}, $${offset + 7}, $${offset + 8}, $${offset + 9}, $${offset + 10}, 
+          $${offset + 11}, $${offset + 12}, $${offset + 13}, $${offset + 14}, $${offset + 15},
+          $${offset + 16}, $${offset + 17}, $${offset + 18}, $${offset + 19})`
+      );
+      
+      // Determine amount_in/out based on transaction type
+      const solAmount = parseFloat(tx.sol_amount);
+      const tokenAmount = parseFloat(tx.token_amount);
+      let amountIn, amountOut, amountInDecimals, amountOutDecimals;
+      
+      if (tx.type === 'buy') {
+        amountIn = tx.sol_amount;
+        amountInDecimals = 9;
+        amountOut = tx.token_amount;
+        amountOutDecimals = 6;
+      } else {
+        amountIn = tx.token_amount;
+        amountInDecimals = 6;
+        amountOut = tx.sol_amount;
+        amountOutDecimals = 9;
+      }
+      
+      values.push(
+        tx.signature,
+        tx.pool_id,
+        tx.token_id,
+        tx.block_time,
+        tx.slot,
+        tx.type,
+        tx.user_address,
+        amountIn,
+        amountInDecimals,
+        amountOut,
+        amountOutDecimals,
+        solAmount || null,
+        tokenAmount || null,
+        tx.price_per_token || null,
+        tx.protocol_fee || null,
+        tx.platform_fee || null,
+        tx.transaction_fee || null,
+        tx.success !== undefined ? tx.success : true,
+        tx.raw_data || tx.metadata || null
+      );
+    });
+
+    const query = `
+      INSERT INTO transactions (
+        signature, pool_id, token_id, block_time, slot, type, user_address,
+        amount_in, amount_in_decimals, amount_out, amount_out_decimals,
+        sol_amount, token_amount, price_per_token,
+        protocol_fee, platform_fee, transaction_fee,
+        success, raw_data
+      ) VALUES ${placeholders.join(', ')}
+      ON CONFLICT (signature, block_time) DO NOTHING
+    `;
+
+    await this.query(query, values);
   }
 
   private async _insertBatch(transactions: Transaction[]): Promise<number> {

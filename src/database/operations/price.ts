@@ -1,46 +1,43 @@
-import { BaseOperations } from './base-operations';
+import { BaseOperations } from '../base-operations';
+import { PriceCandle, LatestPrice, PriceChange, VolumeStats } from '../types';
 
-export interface PriceCandle {
-  token_id: string;
-  bucket: Date;
-  open: number;
-  high: number;
-  low: number;
-  close: number;
-  volume_token: number;
-  volume_sol: number;
-  trade_count: number;
-  buyer_count: number;
-  seller_count: number;
-}
-
-export interface LatestPrice {
-  price: number;
-  bucket: Date;
-  volume_sol_1h: number;
-  trade_count_1h: number;
-}
-
-export interface PriceChange {
-  current_price: number;
-  previous_price: number;
-  price_change: number;
-  price_change_percent: number;
-}
-
-export interface VolumeStats {
-  token_id: string;
-  volume_sol_1h: number;
-  volume_sol_24h: number;
-  trade_count_1h: number;
-  trade_count_24h: number;
-  unique_traders_1h: number;
-  unique_traders_24h: number;
-}
+// Re-export types for backward compatibility
+export type { PriceCandle, LatestPrice, PriceChange, VolumeStats };
 
 export class PriceOperations extends BaseOperations {
   constructor() {
     super();
+  }
+
+  /**
+   * Record a price update (MonitorService compatibility)
+   */
+  async recordPrice(
+    poolId: string,
+    priceSol: number,
+    priceUsd?: number,
+    volumeSol?: number,
+    volumeUsd?: number,
+    timestamp?: Date
+  ): Promise<void> {
+    // First, update the pool's latest price
+    const updatePoolQuery = `
+      UPDATE pools 
+      SET 
+        latest_price = $1,
+        latest_price_usd = $2,
+        updated_at = NOW()
+      WHERE id = $3
+    `;
+    
+    await this.execute(updatePoolQuery, [
+      priceSol.toString(),
+      priceUsd ? priceUsd.toString() : null,
+      poolId
+    ]);
+
+    // If we have volume data, we could also insert into a price history table
+    // For now, this just updates the pool's latest price
   }
 
   /**

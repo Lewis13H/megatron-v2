@@ -17,8 +17,7 @@ import { TransactionFormatter } from "./utils/transaction-formatter";
 import { bnLayoutFormatter } from "./utils/bn-layout-formatter";
 import { SolanaEventParser } from "./utils/event-parser";
 import pumpFunIdl from "./idls/pump_0.1.0.json";
-import { savePumpfunToken } from "../../database/monitor-integration";
-import { getDbPool, PoolOperations } from "../../database";
+import { monitorService } from "../../database";
 import { pumpfunIntegration } from "./enhanced-integration";
 
 interface SubscribeRequest {
@@ -79,9 +78,7 @@ PUMP_FUN_EVENT_PARSER.addParserFromIdl(
   pumpFunIdl as Idl
 );
 
-// Initialize database operations
-const dbPool = getDbPool();
-const poolOperations = new PoolOperations();
+// Database operations now handled by monitorService
 
 // Function to fetch metadata from URI
 async function fetchTokenMetadata(uri: string): Promise<TokenMetadata | null> {
@@ -253,8 +250,47 @@ async function handleStream(client: Client, args: SubscribeRequest) {
           }
         };
         
-        await savePumpfunToken(saveData);
-        console.log(`💾 New token saved to database with metadata`);
+        // Save token data using new MonitorService
+        // Convert timestamp string to Date
+        const creationDate = new Date(tokenData.timestamp);
+        
+        const tokenId = await monitorService.saveToken({
+          mint_address: tokenData.mint,
+          symbol: tokenData.symbol || 'UNKNOWN',
+          name: tokenData.name || 'Unknown Token',
+          decimals: 6, // Pump.fun tokens have 6 decimals
+          platform: 'pumpfun',
+          creation_signature: tokenData.signature,
+          creation_timestamp: creationDate,
+          creator_address: tokenData.user,
+          initial_supply: '1000000000000000', // 1B tokens with 6 decimals
+          metadata: {
+            uri: tokenData.uri,
+            bondingCurve: tokenData.bondingCurve,
+            mintAuthority: tokenData.mintAuthority,
+            associatedBondingCurve: tokenData.associatedBondingCurve,
+            offChainMetadata: tokenData.offChainMetadata,
+            slot: tokenData.slot,
+            saveData: saveData
+          }
+        });
+        
+        // Save pool data - basic info only, reserves will be updated by account monitor
+        await monitorService.savePool({
+          pool_address: tokenData.bondingCurve,
+          token_id: tokenId,
+          platform: 'pumpfun',
+          creation_signature: tokenData.signature,
+          creation_timestamp: creationDate,
+          creator_address: tokenData.user,
+          is_active: true,
+          metadata: {
+            associatedBondingCurve: tokenData.associatedBondingCurve,
+            mintAuthority: tokenData.mintAuthority
+          }
+        });
+        
+        console.log(`💾 New token and pool saved to database with metadata`);
         
         // Calculate initial technical score after a delay
         await pumpfunIntegration.onNewTokenCreated(saveData);

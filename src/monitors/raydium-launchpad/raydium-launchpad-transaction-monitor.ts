@@ -17,8 +17,7 @@ import { TransactionFormatter } from "./utils/transaction-formatter";
 import { SolanaEventParser } from "./utils/event-parser";
 import { bnLayoutFormatter } from "./utils/bn-layout-formatter";
 import raydiumLaunchpadIdl from "./idls/raydium_launchpad.json";
-import { getDbPool, PoolOperations, PoolData } from "../../database";
-import { getTransactionIntegration, MonitorTransaction } from "../../database/transaction-monitor-integration";
+import { monitorService } from "../../database";
 
 interface SubscribeRequest {
   accounts: { [key: string]: SubscribeRequestFilterAccounts };
@@ -80,10 +79,31 @@ RAYDIUM_LAUNCHPAD_EVENT_PARSER.addParserFromIdl(
   raydiumLaunchpadIdl as Idl
 );
 
-// Initialize database operations
-const dbPool = getDbPool();
-const poolOperations = new PoolOperations();
-const txIntegration = getTransactionIntegration();
+// Transaction batching for better performance
+const transactionBatch: any[] = [];
+const BATCH_SIZE = 50;
+const BATCH_TIMEOUT = 5000; // 5 seconds
+
+let batchTimer: NodeJS.Timeout | null = null;
+
+async function flushBatch() {
+  if (transactionBatch.length === 0) return;
+  
+  const batch = [...transactionBatch];
+  transactionBatch.length = 0;
+  
+  if (batchTimer) {
+    clearTimeout(batchTimer);
+    batchTimer = null;
+  }
+  
+  try {
+    await monitorService.saveTransactionBatch(batch);
+    console.log(`💾 Batch of ${batch.length} transactions saved`);
+  } catch (error) {
+    console.error(`❌ Failed to save batch:`, error);
+  }
+}
 
 async function handleStream(client: Client, args: SubscribeRequest) {
   console.log("🚀 Starting Comprehensive Raydium Launchpad Transaction Monitor...")
@@ -451,38 +471,47 @@ ${parsedTx.events.map(evt => `  - ${evt.name || 'Event'}`).join('\n')}` : ''}
         }
       }
 
-      const monitorTx: MonitorTransaction = {
+      const monitorTx = {
         signature: parsedTx.signature,
-        type: parsedTx.type === TransactionType.BUY ? 'buy' : 'sell',
-        user: parsedTx.user,
-        mint: parsedTx.data.baseMint,
-        poolAddress: parsedTx.data.poolId,
-        solAmount: solAmount,
-        tokenAmount: tokenAmount,
-        timestamp: new Date(parsedTx.blockTime).toISOString(),
+        mint_address: parsedTx.data.baseMint,
+        pool_address: parsedTx.data.poolId,
+        block_time: new Date(parsedTx.blockTime),
         slot: parsedTx.slot,
-        amountIn: parsedTx.data.amountIn,
-        amountInDecimals: isBuy ? 9 : 6, // SOL has 9 decimals, assume token has 6
-        amountOut: parsedTx.data.amountOut,
-        amountOutDecimals: isBuy ? 6 : 9,
-        protocolFee: parsedTx.data.protocolFee,
-        platformFee: parsedTx.data.platformFee,
-        transactionFee: parsedTx.fee,
-        success: parsedTx.success,
-        rawData: {
-          program: 'raydium_launchpad',
-          transactionData: parsedTx.data,
-          events: parsedTx.events,
-          instructions: parsedTx.instructions.map(ix => ix.name)
+        type: parsedTx.type === TransactionType.BUY ? 'buy' as const : 'sell' as const,
+        user_address: parsedTx.user,
+        sol_amount: solAmount.toString(),
+        token_amount: tokenAmount.toString(),
+        price_per_token: tokenAmount > 0 ? solAmount / tokenAmount : 0,
+        metadata: {
+          amountIn: parsedTx.data.amountIn,
+          amountInDecimals: isBuy ? 9 : 6,
+          amountOut: parsedTx.data.amountOut,
+          amountOutDecimals: isBuy ? 6 : 9,
+          protocolFee: parsedTx.data.protocolFee,
+          platformFee: parsedTx.data.platformFee,
+          transactionFee: parsedTx.fee,
+          success: parsedTx.success,
+          rawData: {
+            program: 'raydium_launchpad',
+            transactionData: parsedTx.data,
+            events: parsedTx.events,
+            instructions: parsedTx.instructions.map((ix: any) => ix.name)
+          }
         }
       };
 
-      const saved = await txIntegration.saveTransaction(monitorTx);
-
-      if (saved) {
-        console.log(`💾 ${parsedTx.type} transaction saved to database`);
+      // Add to batch
+      transactionBatch.push(monitorTx);
+      console.log(`📦 ${parsedTx.type} transaction added to batch (${transactionBatch.length}/${BATCH_SIZE})`);
+      
+      // Flush if batch is full
+      if (transactionBatch.length >= BATCH_SIZE) {
+        await flushBatch();
       } else {
-        console.log(`⚠️  Transaction not saved (token/pool may not exist in DB yet)`);
+        // Set timer for batch timeout
+        if (!batchTimer) {
+          batchTimer = setTimeout(flushBatch, BATCH_TIMEOUT);
+        }
       }
     } catch (error) {
       console.error(`❌ Failed to save transaction to database:`, error);

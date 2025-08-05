@@ -18,8 +18,7 @@ import { bnLayoutFormatter } from "./utils/bn-layout-formatter";
 import { SolanaEventParser } from "./utils/event-parser";
 import { parseSwapTransactionOutput } from "./utils/pump-fun-parsed-transaction";
 import pumpFunIdl from "./idls/pump_0.1.0.json";
-import { savePumpfunToken } from "../../database/monitor-integration";
-import { getTransactionIntegration, MonitorTransaction } from "../../database/transaction-monitor-integration";
+import { monitorService } from "../../database";
 
 interface SubscribeRequest {
   accounts: { [key: string]: SubscribeRequestFilterAccounts };
@@ -60,8 +59,31 @@ PUMP_FUN_EVENT_PARSER.addParserFromIdl(
   pumpFunIdl as Idl
 );
 
-// Initialize transaction integration
-const txIntegration = getTransactionIntegration();
+// Transaction batching for better performance
+const transactionBatch: any[] = [];
+const BATCH_SIZE = 50;
+const BATCH_TIMEOUT = 5000; // 5 seconds
+
+let batchTimer: NodeJS.Timeout | null = null;
+
+async function flushBatch() {
+  if (transactionBatch.length === 0) return;
+  
+  const batch = [...transactionBatch];
+  transactionBatch.length = 0;
+  
+  if (batchTimer) {
+    clearTimeout(batchTimer);
+    batchTimer = null;
+  }
+  
+  try {
+    await monitorService.saveTransactionBatch(batch);
+    console.log(`💾 Batch of ${batch.length} transactions saved`);
+  } catch (error) {
+    console.error(`❌ Failed to save batch:`, error);
+  }
+}
 
 async function handleStream(client: Client, args: SubscribeRequest) {
   console.log("Starting Pump.fun Transaction Monitor...")
@@ -136,35 +158,44 @@ async function handleStream(client: Client, args: SubscribeRequest) {
       
       // Save transaction to database
       try {
-        const monitorTx: MonitorTransaction = {
+        const monitorTx = {
           signature: output.signature,
-          type: output.type,
-          user: output.user,
-          mint: output.mint,
-          bondingCurve: output.bondingCurve,
-          solAmount: output.solAmount,
-          tokenAmount: output.tokenAmount,
-          timestamp: output.timestamp,
+          mint_address: output.mint,
+          pool_address: output.bondingCurve,
+          block_time: new Date(output.timestamp),
           slot: data.slot || 0,
-          amountIn: swapData.in_amount?.toString(),
-          amountInDecimals: output.type === 'buy' ? 9 : 6, // SOL has 9 decimals, token has 6
-          amountOut: swapData.out_amount?.toString(),
-          amountOutDecimals: output.type === 'buy' ? 6 : 9,
-          transactionFee: data.transaction?.meta?.fee,
-          success: !data.transaction?.meta?.err,
-          rawData: {
-            program: 'pumpfun',
-            instructionData: swapData,
-            parsedTxn: parsedTxn
+          type: output.type as 'buy' | 'sell',
+          user_address: output.user,
+          sol_amount: output.solAmount.toString(),
+          token_amount: output.tokenAmount.toString(),
+          price_per_token: output.solAmount / output.tokenAmount,
+          metadata: {
+            amountIn: swapData.in_amount?.toString(),
+            amountInDecimals: output.type === 'buy' ? 9 : 6,
+            amountOut: swapData.out_amount?.toString(),
+            amountOutDecimals: output.type === 'buy' ? 6 : 9,
+            transactionFee: data.transaction?.meta?.fee,
+            success: !data.transaction?.meta?.err,
+            rawData: {
+              program: 'pumpfun',
+              instructionData: swapData,
+              parsedTxn: parsedTxn
+            }
           }
         };
 
-        const saved = await txIntegration.saveTransaction(monitorTx);
-
-        if (saved) {
-          console.log(`💾 ${output.type.toUpperCase()} transaction saved to database`);
+        // Add to batch
+        transactionBatch.push(monitorTx);
+        console.log(`📦 ${output.type.toUpperCase()} transaction added to batch (${transactionBatch.length}/${BATCH_SIZE})`);
+        
+        // Flush if batch is full
+        if (transactionBatch.length >= BATCH_SIZE) {
+          await flushBatch();
         } else {
-          console.log(`⚠️  Transaction not saved (token/pool may not exist in DB yet)`);
+          // Set timer for batch timeout
+          if (!batchTimer) {
+            batchTimer = setTimeout(flushBatch, BATCH_TIMEOUT);
+          }
         }
       } catch (error) {
         console.error(`❌ Failed to save transaction:`, error);

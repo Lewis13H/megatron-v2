@@ -1,35 +1,92 @@
-import { BaseOperations } from './base-operations';
+import { BaseOperations } from '../base-operations';
 import { PoolClient } from 'pg';
+import { Pool, PoolData as LegacyPoolData } from '../types';
 
-export interface PoolData {
-  pool_address: string;
-  base_mint: string;
-  quote_mint: string;
-  platform: 'pumpfun' | 'raydium_launchpad';
-  initial_price?: number;
-  initial_price_usd?: string;
-  initial_base_liquidity?: string;
-  initial_quote_liquidity?: string;
-  
-  // Pump.fun specific
-  bonding_curve_address?: string;
-  virtual_sol_reserves?: string;
-  virtual_token_reserves?: string;
-  real_sol_reserves?: string;
-  real_token_reserves?: string;
-  bonding_curve_progress?: number;
-  latest_price?: string;
-  latest_price_usd?: string;
-  
-  // Raydium specific
-  lp_mint?: string;
-  base_vault?: string;
-  quote_vault?: string;
-}
+// Re-export types for backward compatibility
+export type { Pool };
+export type PoolData = LegacyPoolData;
 
 export class PoolOperations extends BaseOperations {
   constructor() {
     super();
+  }
+
+  /**
+   * Create a new pool (MonitorService compatibility)
+   */
+  async create(pool: Omit<Pool, 'id'>): Promise<string> {
+    // Map to existing database columns
+    const query = `
+      INSERT INTO pools (
+        pool_address, token_id, base_mint, quote_mint, platform,
+        initial_price, 
+        initial_base_liquidity, initial_quote_liquidity,
+        bonding_curve_address, virtual_sol_reserves, virtual_token_reserves,
+        real_sol_reserves, real_token_reserves, bonding_curve_progress,
+        lp_mint, base_vault, quote_vault
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+      ON CONFLICT (pool_address) DO UPDATE SET
+        virtual_sol_reserves = EXCLUDED.virtual_sol_reserves,
+        virtual_token_reserves = EXCLUDED.virtual_token_reserves,
+        real_sol_reserves = EXCLUDED.real_sol_reserves,
+        real_token_reserves = EXCLUDED.real_token_reserves,
+        bonding_curve_progress = EXCLUDED.bonding_curve_progress,
+        updated_at = NOW()
+      RETURNING id
+    `;
+
+    // Calculate initial price if we have reserves
+    let initialPrice = pool.initial_price;
+    if (!initialPrice && pool.virtual_sol_reserves && pool.virtual_token_reserves) {
+      const solReserves = BigInt(pool.virtual_sol_reserves);
+      const tokenReserves = BigInt(pool.virtual_token_reserves);
+      if (tokenReserves > 0n) {
+        initialPrice = Number(solReserves) / 1e9 / (Number(tokenReserves) / 1e6);
+      }
+    }
+
+    const values = [
+      pool.pool_address,
+      pool.token_id,
+      pool.base_mint || pool.pool_address, // Use pool address as base_mint if not provided
+      pool.quote_mint || 'So11111111111111111111111111111111111111112', // WSOL
+      pool.platform,
+      initialPrice || null,
+      pool.initial_base_liquidity || pool.initial_virtual_token_reserves || pool.virtual_token_reserves || null,
+      pool.initial_quote_liquidity || pool.initial_virtual_sol_reserves || pool.virtual_sol_reserves || null,
+      pool.bonding_curve_address || null,
+      pool.virtual_sol_reserves || null,
+      pool.virtual_token_reserves || null,
+      pool.real_sol_reserves || null,
+      pool.real_token_reserves || null,
+      pool.bonding_curve_progress || null,
+      pool.lp_mint || null,
+      pool.base_vault || null,
+      pool.quote_vault || null
+    ];
+
+    const result = await this.queryOne<{ id: string }>(query, values);
+    return result!.id;
+  }
+
+  /**
+   * Get pool by address (MonitorService compatibility)
+   */
+  async getByAddress(poolAddress: string): Promise<Pool | null> {
+    const query = 'SELECT * FROM pools WHERE pool_address = $1';
+    return await this.queryOne<Pool>(query, [poolAddress]);
+  }
+
+  /**
+   * Get pools by token ID (MonitorService compatibility)
+   */
+  async getByTokenId(tokenId: string): Promise<Pool[]> {
+    const query = `
+      SELECT * FROM pools 
+      WHERE token_id = $1 
+      ORDER BY created_at DESC
+    `;
+    return await this.queryMany<Pool>(query, [tokenId]);
   }
 
   /**

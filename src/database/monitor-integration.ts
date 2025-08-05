@@ -1,5 +1,10 @@
+/**
+ * @deprecated This file is being replaced by MonitorService (monitor-service.ts)
+ * Monitors should use: import { monitorService } from '../../database';
+ * This file will be removed after all monitors are migrated.
+ */
 import { getDbPool } from './connection';
-import { PoolOperations } from './pool-operations';
+import { PoolOperations } from './operations/pool';
 
 interface TokenData {
   mint_address: string;
@@ -17,22 +22,13 @@ interface TokenData {
 const pool = getDbPool();
 const poolOps = new PoolOperations();
 
-// Helper function to get current SOL price
+// Helper function to get current SOL price - DEPRECATED
+// Use: SELECT get_latest_sol_usd_price() or monitorService.getLatestSolPrice()
 async function getCurrentSolPrice(): Promise<number | null> {
+  console.warn('getCurrentSolPrice() is deprecated. Use SQL function: SELECT get_latest_sol_usd_price()');
   try {
-    const result = await pool.query(`
-      SELECT price_usd 
-      FROM sol_usd_prices 
-      ORDER BY price_time DESC 
-      LIMIT 1
-    `);
-    
-    if (result.rows.length > 0) {
-      return parseFloat(result.rows[0].price_usd);
-    }
-    
-    console.warn('No SOL/USD price found in database');
-    return null;
+    const result = await pool.query('SELECT get_latest_sol_usd_price() as price');
+    return result.rows[0]?.price || null;
   } catch (error) {
     console.error('Error fetching SOL price:', error);
     return null;

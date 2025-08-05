@@ -16,7 +16,7 @@ import { SubscribeRequestPing } from "@triton-one/yellowstone-grpc/dist/types/gr
 import { TransactionFormatter } from "./utils/transaction-formatter";
 import { bnLayoutFormatter } from "./utils/bn-layout-formatter";
 import raydiumLaunchpadIdl from "./idls/raydium_launchpad.json";
-import { saveRaydiumToken } from "../../database/monitor-integration";
+import { monitorService } from "../../database";
 
 // This monitor focuses on detecting new token launches on Raydium Launchpad
 // It captures the initial token metadata and pool creation details
@@ -365,15 +365,49 @@ async function handleStream(client: Client, args: SubscribeRequest) {
       
       // Save to database with initial values (0, 0, N/A)
       // Price will be set by the account monitor
-      const saveData = {
-        ...output,
-        initialPrice: "0",
-        initialPriceUsd: "0"
-      };
-      
-      saveRaydiumToken(saveData).catch(error => {
+      // Save token data using new MonitorService
+      try {
+        const tokenId = await monitorService.saveToken({
+          mint_address: output.baseTokenMint,
+          symbol: output.tokenMetadata?.symbol || 'UNKNOWN',
+          name: output.tokenMetadata?.name || 'Unknown Token',
+          decimals: 9, // Raydium typically uses 9 decimals
+          platform: 'raydium',
+          creation_signature: output.signature,
+          creation_timestamp: new Date(output.timestamp),
+          creator_address: output.creator,
+          initial_supply: '1000000000000000000', // Default 1B tokens with 9 decimals
+          metadata: {
+            ...output.tokenMetadata,
+            poolState: output.poolState,
+            quoteTokenMint: output.quoteTokenMint,
+            solscanUrl: output.solscanUrl,
+            shyftUrl: output.shyftUrl
+          }
+        });
+        
+        // Save pool data if we have pool state
+        if (output.poolState) {
+          await monitorService.savePool({
+            pool_address: output.poolState,
+            token_id: tokenId,
+            platform: 'raydium',
+            creation_signature: output.signature,
+            creation_timestamp: new Date(output.timestamp),
+            creator_address: output.creator,
+            is_active: true,
+            metadata: {
+              baseTokenMint: output.baseTokenMint,
+              quoteTokenMint: output.quoteTokenMint,
+              tokenMetadata: output.tokenMetadata
+            }
+          });
+        }
+        
+        console.log(`💾 New Raydium token and pool saved to database`);
+      } catch (error) {
         console.error("Failed to save token to database:", error);
-      });
+      }
       
       console.log(
         "--------------------------------------------------------------------------------------------------"

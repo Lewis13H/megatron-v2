@@ -55,6 +55,19 @@ body {
     font-size: 13px;
 }
 
+/* Navigation link */
+.nav-link {
+    color: #14f195;
+    text-decoration: none;
+    font-size: 14px;
+    transition: opacity 0.2s;
+    margin-right: 20px;
+}
+
+.nav-link:hover {
+    opacity: 0.8;
+}
+
 /* Progress column styling */
 .progress {
     font-weight: 600;
