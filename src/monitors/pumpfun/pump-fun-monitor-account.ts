@@ -17,6 +17,7 @@ import bs58 from 'bs58';
 // Import utility function
 import { bnLayoutFormatter } from "./utils/bn-layout-formatter";
 import { getDbPool, PoolOperations, PoolData } from "../../database";
+import { pumpfunIntegration } from "./enhanced-integration";
 
 const PUMP_FUN_PROGRAM_ID = '6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P';
 
@@ -333,6 +334,23 @@ export class PumpFunAccountMonitor {
       progress: bondingCurveProgress,
       complete: data.complete || false,
       price: price > 0 ? price.toFixed(20).replace(/0+$/, '') : undefined
+    });
+    
+    // Update technical score based on account state changes
+    const accountData = {
+      bondingCurveAddress: accountInfo.pubkey,
+      bondingCurveProgress: bondingCurveProgress,
+      virtualSolReserves: virtualSol,
+      virtualTokenReserves: virtualToken,
+      realSolReserves: realSol,
+      realTokenReserves: realToken,
+      complete: data.complete || false,
+      price: price
+    };
+    
+    // Run async without awaiting to avoid blocking
+    pumpfunIntegration.onAccountUpdate(accountData).catch(error => {
+      console.error('Error updating technical score:', error);
     });
   }
   

@@ -10,6 +10,18 @@ The goal is to analyze 100,000+ tokens weekly, identifying trades with 300%+ ret
 
 ## Development Commands
 
+### Technical Scoring System
+```bash
+# Monitor technical scores in real-time
+npm run score:monitor
+
+# Run database migration for technical scoring
+npx tsx src/database/setup/run-technical-scoring-migration.ts
+
+# Fix technical scoring functions (if needed)
+npx tsx src/database/setup/fix-technical-scoring-functions.ts
+```
+
 ### Running Monitors
 ```bash
 # Monitor new token mints on Raydium Launchpad
@@ -147,6 +159,8 @@ Each monitor follows this pattern:
 - **transactions**: Time-series transaction data (hypertable)
 - **price_candles_1m**: Minute-level price aggregates (hypertable)
 - **price_candles_1m_cagg**: Continuous aggregate for efficient price queries
+- **technical_scores**: Time-series technical scoring data (hypertable)
+- **latest_technical_scores**: View showing current scores per token
 
 ### Monitor Integration
 Monitors automatically save data using:
@@ -161,6 +175,30 @@ import { saveRaydiumToken } from '../../database/monitor-integration';
 - **Reserved for Migration**: 206,900,000 tokens (206.9 million)
 - **Graduation Threshold**: 84 SOL collected in bonding curve
 - **Progress Calculation**: Based on tokens sold from virtual reserves
+
+### Technical Scoring System (333 Points)
+The Technical Score evaluates tokens based on real-time market dynamics:
+
+1. **Market Cap & Entry Optimization (100 points)**
+   - Heavily favors $15-30k market cap range (optimal entry)
+   - Tracks velocity of market cap growth
+
+2. **Bonding Curve Dynamics (83 points)**
+   - Progress velocity tracking (optimal: 0.5-2% per hour)
+   - Consistency and position scoring
+   - Sweet spot: 5-20% progress
+
+3. **Trading Health Metrics (75 points)**
+   - Buy/sell ratio analysis
+   - Volume trend comparison (5min vs 30min)
+   - Whale concentration penalties
+
+4. **Sell-off Detection & Response (75 points)**
+   - Real-time price drop monitoring
+   - Dynamic penalties (-40 to 40 points)
+   - Recovery strength measurement
+
+**Integration**: Scores update automatically via monitor integration with 5-second caching and debouncing for performance.
 
 ## Important Implementation Details
 
@@ -210,15 +248,24 @@ const priceInSol = (virtualSolReserves / 1e9) / (virtualTokenReserves / 1e6);
 - ✅ Transaction and account monitoring infrastructure
 - ✅ Database integration with PostgreSQL + TimescaleDB
 - ✅ Pool and transaction data storage with latest_price field
-- ✅ Price aggregates and continuous views (Session 4)
+- ✅ Price aggregates and continuous views
 - ✅ Real-time price tracking with 1-minute candles
 - ✅ Volume statistics and high-volume token detection
 - ✅ UI Viewer with real-time dashboard
 - ✅ gRPC streaming setup
+- ✅ **Technical Scoring System (333 points)** - COMPLETED January 2025:
+  - ✅ Market Cap & Entry Optimization scoring (100 points)
+  - ✅ Bonding Curve Dynamics with velocity metrics (83 points)
+  - ✅ Trading Health Metrics analysis (75 points)
+  - ✅ Sell-off Detection & Response system (75 points)
+  - ✅ Real-time score updates integrated with monitors
+  - ✅ Dashboard display with tooltips and sorting
+  - ✅ Standalone score monitor with alerts
 
 ### In Progress
 - 🔄 Enhanced error handling and reconnection logic
-- 🔄 Scoring system implementation
+- 🔄 Holder Score implementation (333 points)
+- 🔄 Social Score implementation (333 points)
 - 🔄 ML pipeline development
 
 ### Planned (Priority Order)

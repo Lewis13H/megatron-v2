@@ -8,6 +8,8 @@ class Dashboard {
     this.tokensPerPage = 50;
     this.totalTokens = 0;
     this.allTokens = [];
+    this.sortColumn = 'technical'; // Default sort by technical score
+    this.sortDirection = 'desc';
   }
 
   async init() {
@@ -15,6 +17,7 @@ class Dashboard {
     await this.updateSolPrice();
     this.startAutoUpdate();
     this.updateConnectionStatus(true);
+    this.setupSortHandlers();
   }
 
   async updateTokens() {
@@ -85,8 +88,8 @@ class Dashboard {
           <div class="sol-value">${this.formatMarketCapSol(token.marketCap.sol)} SOL</div>
         </td>
         <td class="progress">${this.renderProgressBar(token.bondingCurveProgress)}</td>
-        <td class="score ${this.getScoreClass(token.scores.total, 999)}">${token.scores.total}</td>
-        <td class="score ${this.getScoreClass(token.scores.technical, 333)}">${token.scores.technical}</td>
+        <td class="score ${this.getScoreClass(token.scores.total, 999)}">${Math.round(token.scores.total)}</td>
+        <td class="score ${this.getScoreClass(token.scores.technical, 333)}" title="Market Cap: ${Math.round(token.scores.marketCap)}/100 | Bonding Curve: ${Math.round(token.scores.bondingCurve)}/83 | Trading Health: ${Math.round(token.scores.tradingHealth)}/75 | Sell-off Response: ${Math.round(token.scores.selloffResponse)}/75">${Math.round(token.scores.technical)}${token.isSelloffActive ? ' ⚠️' : ''}</td>
         <td class="score ${this.getScoreClass(token.scores.holder, 333)}">${token.scores.holder}</td>
         <td class="score ${this.getScoreClass(token.scores.social, 333)}">${token.scores.social}</td>
         <td class="age">${token.age}</td>
@@ -296,6 +299,73 @@ class Dashboard {
       await this.updateTokens();
       await this.updateSolPrice();
     }, this.updateInterval);
+  }
+  
+  setupSortHandlers() {
+    // Add click handlers to sortable columns
+    const headers = document.querySelectorAll('th');
+    const sortableColumns = {
+      4: 'total',      // Total score
+      5: 'technical',  // Technical score
+      6: 'holder',     // Holder score
+      7: 'social'      // Social score
+    };
+    
+    Object.entries(sortableColumns).forEach(([index, column]) => {
+      const header = headers[parseInt(index)];
+      if (header) {
+        header.style.cursor = 'pointer';
+        header.title = 'Click to sort';
+        header.addEventListener('click', () => {
+          this.sortBy(column);
+          this.updateSortIndicators(parseInt(index));
+        });
+        
+        // Add initial sort indicator for technical score
+        if (column === 'technical') {
+          header.innerHTML = header.textContent + ' ▼';
+        }
+      }
+    });
+  }
+  
+  updateSortIndicators(columnIndex) {
+    // Remove all sort indicators
+    const headers = document.querySelectorAll('th');
+    headers.forEach(header => {
+      header.innerHTML = header.textContent.replace(' ▲', '').replace(' ▼', '');
+    });
+    
+    // Add indicator to current column
+    const header = headers[columnIndex];
+    if (header) {
+      header.innerHTML = header.textContent + (this.sortDirection === 'desc' ? ' ▼' : ' ▲');
+    }
+  }
+  
+  sortBy(column) {
+    // Toggle direction if same column
+    if (this.sortColumn === column) {
+      this.sortDirection = this.sortDirection === 'desc' ? 'asc' : 'desc';
+    } else {
+      this.sortColumn = column;
+      this.sortDirection = 'desc';
+    }
+    
+    // Sort the tokens
+    this.allTokens.sort((a, b) => {
+      let aVal = column === 'total' ? a.scores.total : a.scores[column];
+      let bVal = column === 'total' ? b.scores.total : b.scores[column];
+      
+      if (this.sortDirection === 'desc') {
+        return bVal - aVal;
+      } else {
+        return aVal - bVal;
+      }
+    });
+    
+    // Re-render
+    this.renderTokens();
   }
 }
 

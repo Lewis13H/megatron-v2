@@ -19,6 +19,7 @@ import { SolanaEventParser } from "./utils/event-parser";
 import pumpFunIdl from "./idls/pump_0.1.0.json";
 import { savePumpfunToken } from "../../database/monitor-integration";
 import { getDbPool, PoolOperations } from "../../database";
+import { pumpfunIntegration } from "./enhanced-integration";
 
 interface SubscribeRequest {
   accounts: { [key: string]: SubscribeRequestFilterAccounts };
@@ -254,6 +255,10 @@ async function handleStream(client: Client, args: SubscribeRequest) {
         
         await savePumpfunToken(saveData);
         console.log(`💾 New token saved to database with metadata`);
+        
+        // Calculate initial technical score after a delay
+        await pumpfunIntegration.onNewTokenCreated(saveData);
+        console.log(`📊 Technical score calculation scheduled`);
       } catch (error) {
         console.error(`❌ Failed to save token:`, error);
       }

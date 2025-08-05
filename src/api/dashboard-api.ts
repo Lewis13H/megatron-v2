@@ -43,7 +43,7 @@ router.get('/tokens', async (req, res) => {
     `);
     const solPriceUsd = solPriceResult.rows[0]?.price_usd || 200; // Default to $200 if no price
 
-    // Query to get real price data from pools table
+    // Query to get real price data from pools table with technical scores
     const query = `
       SELECT 
         t.mint_address as address,
@@ -54,8 +54,14 @@ router.get('/tokens', async (req, res) => {
         t.platform,
         COALESCE(p.latest_price_usd, p.initial_price_usd, 0) as price_usd,
         COALESCE(p.latest_price, p.initial_price, 0) as price_sol,
-        0 as total_score,
-        0 as technical_score,
+        COALESCE(lts.total_score, 0) as total_score,
+        COALESCE(lts.total_score, 0) as technical_score,
+        COALESCE(lts.market_cap_score, 0) as market_cap_score,
+        COALESCE(lts.bonding_curve_score, 0) as bonding_curve_score,
+        COALESCE(lts.trading_health_score, 0) as trading_health_score,
+        COALESCE(lts.selloff_response_score, 0) as selloff_response_score,
+        COALESCE(lts.buy_sell_ratio, 0) as buy_sell_ratio,
+        lts.is_selloff_active,
         0 as holder_score,
         0 as social_score,
         0 as txns_24h,
@@ -67,9 +73,15 @@ router.get('/tokens', async (req, res) => {
         p.bonding_curve_progress as bonding_curve_progress
       FROM tokens t
       LEFT JOIN pools p ON t.id = p.token_id
+      LEFT JOIN latest_technical_scores lts ON t.id = lts.token_id
       WHERE t.created_at > NOW() - INTERVAL '30 days'
         AND t.symbol IS NOT NULL
-      ORDER BY t.created_at DESC
+      ORDER BY 
+        CASE 
+          WHEN lts.total_score IS NOT NULL THEN lts.total_score 
+          ELSE -1 
+        END DESC,
+        t.created_at DESC
     `;
 
     const result = await pool.query(query);
@@ -94,11 +106,18 @@ router.get('/tokens', async (req, res) => {
           sol: priceSol * 1_000_000_000
         },
         scores: {
-          total: row.total_score,
-          technical: row.technical_score,
+          total: parseFloat(row.total_score) || 0,
+          technical: parseFloat(row.technical_score) || 0,
           holder: row.holder_score,
-          social: row.social_score
+          social: row.social_score,
+          // Technical score breakdown
+          marketCap: parseFloat(row.market_cap_score) || 0,
+          bondingCurve: parseFloat(row.bonding_curve_score) || 0,
+          tradingHealth: parseFloat(row.trading_health_score) || 0,
+          selloffResponse: parseFloat(row.selloff_response_score) || 0
         },
+        buySellRatio: parseFloat(row.buy_sell_ratio) || 0,
+        isSelloffActive: row.is_selloff_active || false,
         age: formatAge(row.age_seconds),
         txns24h: row.txns_24h || 0,
         volume24h: {

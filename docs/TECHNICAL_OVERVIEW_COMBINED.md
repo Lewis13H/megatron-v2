@@ -282,19 +282,54 @@ RateLimitStrategy {
 
 ## Scoring System (999 Points Total)
 
-### Technical Score (333 Points)
-- **Liquidity Metrics** (111 points)
-  - Initial liquidity size (40 points)
-  - Liquidity growth rate (40 points)
-  - LP lock status (31 points)
-- **Trading Metrics** (111 points)
-  - Volume consistency (40 points)
-  - Price stability (40 points)
-  - Buy/sell ratio (31 points)
-- **Smart Contract** (111 points)
-  - Contract verification (40 points)
-  - No mint function (40 points)
-  - No suspicious permissions (31 points)
+### Technical Score (333 Points) - IMPLEMENTED ✅
+
+The Technical Score is a comprehensive, real-time evaluation system optimized for pump.fun tokens, with particular emphasis on the $15-30k market cap range (optimal entry point).
+
+#### Market Cap & Entry Optimization (100 points)
+- **Position Score** (60 points)
+  - $15,000 - $30,000: 60 points ⭐ *Optimal entry zone*
+  - $10,000 - $15,000: 40 points
+  - $30,000 - $50,000: 40 points
+  - $5,000 - $10,000: 20 points
+  - $50,000 - $100,000: 20 points
+  - Outside range: 0 points
+- **Velocity Score** (40 points)
+  - 0.5-2% growth per minute: 40 points
+  - 0.2-0.5% or 2-3% per minute: 25 points
+  - Other positive growth: 10 points
+  - Stagnant/negative: 0 points
+
+#### Bonding Curve Dynamics (83 points)
+- **Progress Velocity** (33 points)
+  - Measures speed through bonding curve milestones
+  - Optimal: 0.5-2% progress per hour
+- **Progress Consistency** (25 points)
+  - Evaluates stability of progression rate
+  - Lower variance = higher score
+- **Current Position** (25 points)
+  - 5-20% progress: 25 points (sweet spot)
+  - Graduated scoring for other ranges
+
+#### Trading Health Metrics (75 points)
+- **Buy/Sell Ratio** (30 points)
+  - Dynamic calculation from recent transactions
+  - Higher ratios indicate healthy demand
+- **Volume Trend** (25 points)
+  - Compares 5-minute to 30-minute volumes
+  - Rewards sustainable growth
+- **Transaction Distribution** (20 points)
+  - Penalizes whale concentration
+  - Favors organic retail distribution
+
+#### Sell-off Detection & Response (75 points)
+- **Sell Pressure Score** (-40 to 40 points)
+  - Real-time monitoring of price drops
+  - Dynamic penalties based on severity
+  - Immediate response to large sells
+- **Recovery Strength** (35 points)
+  - Measures buy volume after dumps
+  - Tracks market resilience
 
 ### Holder Score (333 Points)
 - **Distribution** (111 points)
@@ -403,9 +438,44 @@ RateLimitStrategy {
 - **Logging**: ELK Stack with structured logging
 - **CI/CD**: GitHub Actions with staged deployments
 
+## Technical Scoring Implementation Details
+
+### Database Architecture
+- **technical_scores table**: TimescaleDB hypertable for time-series score data
+- **Scoring functions**: PostgreSQL functions for real-time calculations
+- **Views**: `latest_technical_scores` for current scores per token
+- **Compression**: Automatic compression for data >1 day old
+
+### Integration Points
+1. **Token Creation**: 10-second delay for initial data accumulation
+2. **Price Updates**: Debounced calculations (5-second cache)
+3. **Account Updates**: Milestone-triggered immediate calculations
+4. **Large Transactions**: Instant recalculation for trades >5 SOL
+
+### API & Dashboard
+- **Enhanced /api/tokens endpoint**: Returns technical scores with breakdowns
+- **Dashboard Display**: 
+  - Visual highlighting of technical score column
+  - Tooltips showing component breakdowns
+  - Sell-off warnings with ⚠️ indicator
+  - Sortable columns with visual indicators
+
+### Monitoring Tools
+- **Standalone Score Monitor** (`npm run score:monitor`)
+  - Real-time score change notifications
+  - Top tokens in optimal entry range
+  - Sell-off detection alerts
+  - Colored terminal output for clarity
+
+### Performance Optimizations
+- **5-second score caching**: Prevents excessive recalculation
+- **Debounced updates**: Batches rapid changes
+- **Efficient SQL queries**: Window functions and CTEs
+- **Indexed lookups**: Optimized for score-based queries
+
 ## Implementation Roadmap
 
-### Phase 1: Foundation Enhancement (Weeks 1-2)
+### Phase 1: Foundation Enhancement (Weeks 1-2) - COMPLETED ✅
 1. **Enhanced Monitoring**
    - Complete Pump.fun monitor with all 4 sub-monitors
    - Optimize Raydium launchpad monitor
@@ -556,19 +626,26 @@ RateLimitStrategy {
 
 ## Next Steps
 
-1. **Immediate Actions**
-   - Implement connection pool for Helius RPC
-   - Deploy multi-tier caching system
-   - Complete Pump.fun monitor optimization
-   - Set up database batch operations
+1. **Completed (January 2025)** ✅
+   - ✅ Technical Scoring System (333 points) fully implemented
+   - ✅ Database integration with TimescaleDB
+   - ✅ Monitor integration for real-time scoring
+   - ✅ Dashboard enhanced with score display
+   - ✅ Sell-off detection and response system
 
-2. **Short-term Goals**
+2. **Immediate Actions**
+   - Implement Holder Score (333 points) calculation
+   - Implement Social Score (333 points) with TweetScout API
+   - Deploy ML graduation prediction model
+   - Implement automated trading signals
+
+3. **Short-term Goals**
    - Launch progressive enrichment pipeline
-   - Deploy enhanced ML models
-   - Implement cost tracking
-   - Deploy full scoring system
+   - Complete full 999-point scoring system
+   - Implement trading strategy engine
+   - Deploy production monitoring
 
-3. **Long-term Vision**
+4. **Long-term Vision**
    - Scale to 500k tokens/week
    - Sub-50ms decision latency
    - 90%+ prediction accuracy

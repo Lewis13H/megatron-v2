@@ -19,7 +19,11 @@
     "sol-price:updater": "npx ts-node src/services/price-v2/price-updater.ts",
     "sol-price:migrate": "npx ts-node src/services/price-v2/migrate-to-v2.ts",
     "dashboard:serve": "npx ts-node src/api/server.ts",
-    "dashboard:serve:dev": "node scripts/start-dashboard-dev.js"
+    "dashboard:serve:dev": "node scripts/start-dashboard-dev.js",
+    "score:monitor": "npx ts-node src/monitors/pumpfun/technical-score-monitor.ts",
+    "holder:monitor": "npx ts-node src/monitors/holder-score-monitor.ts",
+    "test:holder": "npx ts-node src/test/test-holder-score.ts",
+    "db:migrate:holder": "psql -U postgres -d megatron_v2 -f src/database/migrations/014_create_holder_tracking_tables.sql"
   },
   "dependencies": {
     "@coral-xyz/anchor": "^0.30.1",
@@ -36,7 +40,9 @@
     "dotenv": "^16.4.7",
     "express": "^5.1.0",
     "lodash": "^4.17.21",
-    "pg": "^8.11.3"
+    "pg": "^8.11.3",
+    "axios": "^1.6.0",
+    "decimal.js": "^10.4.3"
   },
   "devDependencies": {
     "@types/bn.js": "^5.2.0",
