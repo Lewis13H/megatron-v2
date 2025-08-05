@@ -96,6 +96,7 @@ router.get('/tokens', async (req, res) => {
         lhs.organic_growth_score,
         0 as social_score,
         (SELECT COUNT(*) FROM transactions WHERE token_id = t.id AND block_time > NOW() - INTERVAL '24 hours') as txns_24h,
+        COALESCE(lhs.unique_holders, (SELECT COUNT(DISTINCT wallet_address) FROM token_holders WHERE token_id = t.id), 0) as holder_count,
         0 as makers_24h,
         EXTRACT(epoch FROM (NOW() - t.created_at)) as age_seconds,
         (SELECT COALESCE(SUM(sol_amount), 0) FROM transactions WHERE token_id = t.id AND block_time > NOW() - INTERVAL '24 hours' AND type IN ('buy', 'sell')) as volume_24h_sol,
@@ -164,6 +165,7 @@ router.get('/tokens', async (req, res) => {
         isSelloffActive: row.is_selloff_active || false,
         age: formatAge(row.age_seconds),
         txns24h: row.txns_24h || 0,
+        holders: row.holder_count || 0,
         volume24h: {
           usd: parseFloat(row.volume_24h_sol || 0) * parseFloat(solPriceUsd),
           sol: parseFloat(row.volume_24h_sol || 0)

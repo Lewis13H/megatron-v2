@@ -362,7 +362,7 @@ body {
     margin-top: 2px;
 }
 
-.age, .txns, .makers {
+.age, .txns, .holders, .makers {
     color: #cccccc;
 }
 
@@ -406,6 +406,7 @@ td.score:nth-child(6):has-text('⚠️') {
 .col-5m, .col-1h, .col-6h, .col-24h { width: 80px; min-width: 80px; }
 .col-age { width: 60px; min-width: 60px; }
 .col-txns { width: 80px; min-width: 80px; }
+.col-holders { width: 80px; min-width: 80px; }
 .col-volume { width: 90px; min-width: 90px; }
 .col-makers { width: 80px; min-width: 80px; }
 .col-liquidity { width: 90px; min-width: 90px; }
@@ -415,11 +416,7 @@ td.score:nth-child(6):has-text('⚠️') {
     text-align: left;
 }
 
-.col-price, .col-mcap, .col-age, .col-txns, .col-volume, .col-makers, .col-liquidity {
-    text-align: right;
-}
-
-.col-progress, .col-5m, .col-1h, .col-6h, .col-24h {
+.col-price, .col-mcap, .col-age, .col-txns, .col-holders, .col-volume, .col-makers, .col-liquidity, .col-progress, .col-5m, .col-1h, .col-6h, .col-24h {
     text-align: center;
 }
 
@@ -428,11 +425,7 @@ td.token-info {
     text-align: left;
 }
 
-td.price, td.mcap, td.age, td.txns, td.volume, td.makers, td.liquidity {
-    text-align: right;
-}
-
-td.score {
+td.price, td.mcap, td.age, td.txns, td.holders, td.volume, td.makers, td.liquidity, td.progress, td.score {
     text-align: center;
 }
 

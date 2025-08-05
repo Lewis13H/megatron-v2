@@ -104,7 +104,10 @@
       "Bash(PGPASSWORD=password123 psql -h localhost -p 5433 -U postgres -d megatron_v2 -c \"\\dt wallet_analysis_cache\")",
       "Bash(PGPASSWORD=password123 psql -h localhost -p 5433 -U postgres -d megatron_v2 -c \"\\d holder_scores\")",
       "WebFetch(domain:docs.helius.dev)",
-      "Bash(PGPASSWORD=password123 psql -h localhost -p 5433 -U postgres -d megatron_v2 -f src/database/migrations/015_add_frozen_score_field.sql)"
+      "Bash(PGPASSWORD=password123 psql -h localhost -p 5433 -U postgres -d megatron_v2 -f src/database/migrations/015_add_frozen_score_field.sql)",
+      "Bash(PGPASSWORD=password123 psql -h localhost -p 5433 -U postgres -d megatron_v2 -c \"SELECT COUNT(*) FROM token_holders\")",
+      "Bash(PGPASSWORD=password123 psql:*)",
+      "Bash(net stop:*)"
     ],
     "deny": []
   }

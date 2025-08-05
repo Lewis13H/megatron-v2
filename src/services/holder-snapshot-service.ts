@@ -122,7 +122,7 @@ export class HolderSnapshotService {
       JOIN pools p ON t.id = p.token_id
       WHERE p.platform = 'pumpfun'
         AND p.bonding_curve_progress >= 10
-        AND p.bonding_curve_progress <= 25
+        AND p.bonding_curve_progress < 100  -- Analyze until graduation
         AND p.status = 'active'
         -- Secondary activation criteria
         AND t.created_at < NOW() - INTERVAL '30 minutes'  -- Token age requirement
@@ -172,9 +172,14 @@ export class HolderSnapshotService {
         return;
       }
 
-      // 2. Analyze wallet quality
-      const walletAddresses = holders.map(h => h.owner);
-      const walletAnalyses = await this.heliusService.analyzeWallets(walletAddresses);
+      // 2. Analyze wallet quality (optional - skip if too many holders to avoid timeouts)
+      let walletAnalyses = new Map<string, any>();
+      if (holders.length <= 50) {
+        const walletAddresses = holders.map(h => h.owner);
+        walletAnalyses = await this.heliusService.analyzeWallets(walletAddresses);
+      } else {
+        console.log(`Skipping detailed wallet analysis for ${token.symbol} - too many holders (${holders.length})`);
+      }
 
       // 3. Save holder snapshot
       await this.heliusService.saveHolderSnapshot(

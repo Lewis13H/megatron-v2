@@ -8,7 +8,7 @@ class Dashboard {
     this.tokensPerPage = 50;
     this.totalTokens = 0;
     this.allTokens = [];
-    this.sortColumn = 'technical'; // Default sort by technical score
+    this.sortColumn = 'total'; // Default sort by total score
     this.sortDirection = 'desc';
   }
 
@@ -94,6 +94,7 @@ class Dashboard {
         <td class="score ${this.getScoreClass(token.scores.social, 333)}">${token.scores.social}</td>
         <td class="age">${token.age}</td>
         <td class="txns">${this.formatNumber(token.txns24h)}</td>
+        <td class="holders">${this.formatNumber(token.holders)}</td>
         <td class="volume">${this.formatMarketCap(token.volume24h.usd)}</td>
         <td class="makers">${this.formatNumber(token.makers24h)}</td>
         <td class="liquidity">${this.formatMarketCap(token.liquidity.usd)}</td>
@@ -367,8 +368,8 @@ class Dashboard {
           this.updateSortIndicators(parseInt(index));
         });
         
-        // Add initial sort indicator for technical score
-        if (column === 'technical') {
+        // Add initial sort indicator for total score
+        if (column === 'total') {
           header.innerHTML = header.textContent + ' ▼';
         }
       }

@@ -5,12 +5,16 @@
 The Holder Score is a sophisticated wallet distribution analysis system that evaluates the health and organic growth potential of Pump.fun tokens. This system activates only when the bonding curve progress reaches 10-25%, providing early signals about token quality while avoiding premature judgments.
 
 ### Activation Criteria
-- **Primary Trigger**: Bonding curve progress between 10-25%
+- **Primary Trigger**: Bonding curve progress ≥ 10%
 - **Secondary Requirements**:
   - Minimum 5 unique holders
   - At least 3 transactions
   - 30 minutes since token creation
-- **Deactivation**: Score freezes at 100% progress and transitions to mature token analysis
+- **Deactivation**: Score freezes at 100% progress (graduation)
+- **Update Frequency**: 
+  - Checked every 5 minutes (configurable)
+  - Maximum once per hour per token (prevents excessive API calls)
+  - Immediate calculation when token first reaches 10% threshold
 
 ## Scoring System Breakdown (333 Points Total)
 

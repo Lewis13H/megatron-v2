@@ -15,7 +15,7 @@ let service: HolderSnapshotService | null = null;
  */
 async function main() {
   console.log('🚀 Starting Holder Score Monitoring Service');
-  console.log(`📊 Analysis window: 10-25% bonding curve progress`);
+  console.log(`📊 Analysis window: 10-100% bonding curve progress`);
   console.log(`⏱️  Check interval: ${INTERVAL_MINUTES} minutes`);
   console.log('');
 
@@ -65,7 +65,7 @@ async function displayStatistics() {
       JOIN pools p ON t.id = p.token_id
       WHERE p.platform = 'pumpfun'
         AND p.bonding_curve_progress >= 10
-        AND p.bonding_curve_progress <= 25
+        AND p.bonding_curve_progress < 100
         AND p.status = 'active'
     `);
     
@@ -102,21 +102,27 @@ async function displayStatistics() {
     
     console.log('\n📊 HOLDER SCORE STATISTICS');
     console.log('═'.repeat(50));
-    console.log(`Eligible tokens (10-25% progress): ${eligible}`);
+    console.log(`Eligible tokens (10-100% progress): ${eligible}`);
     console.log(`Scores calculated (last hour): ${recentScores.count || 0}`);
     
     if (recentScores.count > 0) {
-      console.log(`Average score: ${(recentScores.avg_score || 0).toFixed(0)}/333`);
-      console.log(`Best score: ${recentScores.max_score || 0}/333`);
-      console.log(`Worst score: ${recentScores.min_score || 0}/333`);
+      const avgScore = parseFloat(recentScores.avg_score) || 0;
+      const maxScore = parseInt(recentScores.max_score) || 0;
+      const minScore = parseInt(recentScores.min_score) || 0;
+      console.log(`Average score: ${avgScore.toFixed(0)}/333`);
+      console.log(`Best score: ${maxScore}/333`);
+      console.log(`Worst score: ${minScore}/333`);
     }
     
     if (topTokensResult.rows.length > 0) {
       console.log('\n🏆 TOP SCORED TOKENS (24h)');
       console.log('─'.repeat(50));
       topTokensResult.rows.forEach((token, index) => {
+        const progress = parseFloat(token.bonding_curve_progress) || 0;
+        const gini = parseFloat(token.gini_coefficient) || 0;
+        const botRatio = parseFloat(token.bot_ratio) || 0;
         console.log(`${index + 1}. ${token.symbol} - ${token.total_score}/333`);
-        console.log(`   Progress: ${token.bonding_curve_progress.toFixed(1)}% | Holders: ${token.unique_holders} | Gini: ${token.gini_coefficient.toFixed(3)} | Bots: ${(token.bot_ratio * 100).toFixed(1)}%`);
+        console.log(`   Progress: ${progress.toFixed(1)}% | Holders: ${token.unique_holders} | Gini: ${gini.toFixed(3)} | Bots: ${(botRatio * 100).toFixed(1)}%`);
       });
     }
     

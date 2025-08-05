@@ -22,6 +22,7 @@
     "dashboard:serve:dev": "node scripts/start-dashboard-dev.js",
     "score:monitor": "npx ts-node src/monitors/pumpfun/technical-score-monitor.ts",
     "holder:monitor": "npx ts-node src/monitors/holder-score-monitor.ts",
+    "holder:smart": "npx ts-node src/monitors/holder-score-smart-monitor.ts",
     "test:holder": "npx ts-node src/test/test-holder-score.ts",
     "db:migrate:holder": "psql -U postgres -d megatron_v2 -f src/database/migrations/014_create_holder_tracking_tables.sql"
   },

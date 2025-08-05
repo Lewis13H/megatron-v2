@@ -57,8 +57,8 @@ export class HolderScoreAnalyzer {
     tokenCreationTime?: Date
   ): Promise<HolderScore | null> {
     // Check primary activation criteria
-    if (bondingCurveProgress < 10 || bondingCurveProgress > 25) {
-      console.log(`Token outside activation range: ${bondingCurveProgress.toFixed(2)}% (requires 10-25%)`);
+    if (bondingCurveProgress < 10) {
+      console.log(`Token below activation threshold: ${bondingCurveProgress.toFixed(2)}% (requires minimum 10%)`);
       return null;
     }
     

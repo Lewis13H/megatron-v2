@@ -171,9 +171,13 @@ export class HeliusAPIService {
           try {
             const analysis = await this.analyzeWallet(address);
             analysisMap.set(address, analysis);
-            await this.sleep(200); // Delay between each wallet
-          } catch (error) {
-            console.error(`Error analyzing wallet ${address}:`, error);
+            await this.sleep(500); // Increased delay to avoid rate limits
+          } catch (error: any) {
+            if (error.response?.status === 504) {
+              console.warn(`Skipping wallet ${address} - timeout`);
+            } else {
+              console.error(`Error analyzing wallet ${address}:`, error.message || error);
+            }
           }
         }
         
@@ -280,8 +284,13 @@ export class HeliusAPIService {
       );
       
       return response.data?.tokens || [];
-    } catch (error) {
-      console.error(`Error fetching wallet assets for ${address}:`, error);
+    } catch (error: any) {
+      // Handle timeouts gracefully
+      if (error.response?.status === 504 || error.code === 'ECONNABORTED') {
+        console.warn(`Wallet assets request timed out for ${address}, skipping...`);
+        return [];
+      }
+      console.error(`Error fetching wallet assets for ${address}:`, error.message || error);
       return [];
     }
   }

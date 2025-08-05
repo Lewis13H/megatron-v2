@@ -15,8 +15,8 @@ export class DatabaseConnection {
         database: process.env.DB_NAME || 'megatron_v2',
         user: process.env.DB_USER || 'postgres',
         password: process.env.DB_PASSWORD,
-        max: 20, // Maximum number of clients in the pool
-        idleTimeoutMillis: 30000, // Close idle clients after 30 seconds
+        max: 10, // Reduced from 20 to prevent connection exhaustion
+        idleTimeoutMillis: 10000, // Close idle clients after 10 seconds
         connectionTimeoutMillis: 5000, // Increase from 2000ms to 5000ms
       });
       
