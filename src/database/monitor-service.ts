@@ -296,6 +296,59 @@ export class MonitorService extends BaseOperations {
   }
 
   /**
+   * Get token by mint address
+   */
+  async getTokenByMint(mintAddress: string): Promise<any> {
+    return this.tokenOps.getByMintAddress(mintAddress);
+  }
+
+  /**
+   * Get pool by address
+   */
+  async getPoolByAddress(poolAddress: string): Promise<any> {
+    return this.poolOps.getByAddress(poolAddress);
+  }
+
+  /**
+   * Mark token as graduated
+   */
+  async markTokenAsGraduated(tokenId: string, graduationSignature: string | null): Promise<void> {
+    const query = `
+      UPDATE tokens 
+      SET is_graduated = TRUE, 
+          graduation_timestamp = NOW(),
+          graduation_signature = $2,
+          updated_at = NOW()
+      WHERE id = $1
+    `;
+    await this.execute(query, [tokenId, graduationSignature]);
+  }
+
+  /**
+   * Update pool status
+   */
+  async updatePoolStatus(poolId: string, status: 'active' | 'graduated' | 'closed' | 'failed'): Promise<void> {
+    const query = `
+      UPDATE pools 
+      SET status = $2, updated_at = NOW()
+      WHERE id = $1
+    `;
+    await this.execute(query, [poolId, status]);
+  }
+
+  /**
+   * Update pool progress
+   */
+  async updatePoolProgress(poolId: string, progress: number): Promise<void> {
+    const query = `
+      UPDATE pools 
+      SET bonding_curve_progress = $2, updated_at = NOW()
+      WHERE id = $1
+    `;
+    await this.execute(query, [poolId, progress]);
+  }
+
+  /**
    * Save holder score to database
    */
   async saveHolderScore(tokenMint: string, score: any): Promise<any> {

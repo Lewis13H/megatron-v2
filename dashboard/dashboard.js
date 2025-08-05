@@ -87,7 +87,7 @@ class Dashboard {
           <div class="usd-value">${this.formatMarketCap(token.marketCap.usd)}</div>
           <div class="sol-value">${this.formatMarketCapSol(token.marketCap.sol)} SOL</div>
         </td>
-        <td class="progress">${this.renderProgressBar(token.bondingCurveProgress)}</td>
+        <td class="progress">${this.renderProgressBar(token.bondingCurveProgress, token.isGraduated)}</td>
         <td class="score ${this.getScoreClass(token.scores.total, 999)}">${Math.round(token.scores.total)}</td>
         <td class="score ${this.getScoreClass(token.scores.technical, 333)}" title="Market Cap: ${Math.round(token.scores.marketCap)}/100 | Bonding Curve: ${Math.round(token.scores.bondingCurve)}/83 | Trading Health: ${Math.round(token.scores.tradingHealth)}/75 | Sell-off Response: ${Math.round(token.scores.selloffResponse)}/75">${Math.round(token.scores.technical)}${token.isSelloffActive ? ' ⚠️' : ''}</td>
         <td class="score ${this.getScoreClass(token.scores.holder, 333)}" title="${this.getHolderScoreTooltip(token)}">${Math.round(token.scores.holder)}</td>
@@ -110,7 +110,8 @@ class Dashboard {
     return 'low';
   }
 
-  formatProgress(progress) {
+  formatProgress(progress, isGraduated) {
+    if (isGraduated) return 'Graduated';
     if (progress === null || progress === undefined) return 'N/A';
     return `${progress.toFixed(1)}%`;
   }
@@ -122,13 +123,22 @@ class Dashboard {
     return `progress-${Math.floor(progress / 10) * 10}`;
   }
 
-  renderProgressBar(progress) {
+  renderProgressBar(progress, isGraduated) {
+    if (isGraduated) {
+      return `
+        <div class="progress-bar-container graduated">
+          <div class="progress-bar-fill progress-graduated" style="width: 100%"></div>
+          <span class="progress-text">🎓 Graduated</span>
+        </div>
+      `;
+    }
+    
     if (progress === null || progress === undefined) {
       return '<span class="no-progress">N/A</span>';
     }
     
     const progressClass = this.getProgressColorClass(progress);
-    const progressText = this.formatProgress(progress);
+    const progressText = this.formatProgress(progress, false);
     
     return `
       <div class="progress-bar-container">

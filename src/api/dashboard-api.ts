@@ -102,7 +102,8 @@ router.get('/tokens', async (req, res) => {
         (SELECT COALESCE(SUM(sol_amount), 0) FROM transactions WHERE token_id = t.id AND block_time > NOW() - INTERVAL '24 hours' AND type IN ('buy', 'sell')) as volume_24h_sol,
         0 as reserves_sol,
         0 as liquidity_usd,
-        p.bonding_curve_progress as bonding_curve_progress
+        p.bonding_curve_progress as bonding_curve_progress,
+        t.is_graduated as is_graduated
       FROM tokens t
       LEFT JOIN pools p ON t.id = p.token_id
       LEFT JOIN latest_technical_scores lts ON t.id = lts.token_id
@@ -176,7 +177,8 @@ router.get('/tokens', async (req, res) => {
           sol: 0
         },
         bondingCurveProgress: row.bonding_curve_progress !== null && row.bonding_curve_progress !== undefined ? parseFloat(row.bonding_curve_progress) : null,
-        platform: row.platform || 'unknown'
+        platform: row.platform || 'unknown',
+        isGraduated: row.is_graduated || false
       };
     });
 

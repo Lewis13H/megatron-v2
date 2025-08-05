@@ -113,6 +113,17 @@ body {
 .progress-bar-fill.progress-80 { background-color: #ffcc00; }
 .progress-bar-fill.progress-90 { background-color: #ccff00; }
 .progress-bar-fill.progress-100 { background-color: #00ff00; }
+.progress-bar-fill.progress-graduated { 
+  background: linear-gradient(90deg, #14f195 0%, #0ea274 100%); 
+  box-shadow: 0 0 10px rgba(20, 241, 149, 0.5);
+}
+.progress-bar-container.graduated {
+  border-color: #14f195;
+}
+.progress-bar-container.graduated .progress-text {
+  color: #14f195;
+  font-weight: bold;
+}
 
 /* Progress text */
 .progress-text {
