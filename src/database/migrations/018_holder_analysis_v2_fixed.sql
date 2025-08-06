@@ -1,6 +1,7 @@
--- Migration: 018_holder_analysis_v2
+-- Migration: 018_holder_analysis_v2_fixed
 -- Description: Complete holder analysis system with enhanced metrics and API tracking
 -- Optimized for 50-75% usage of 10M monthly Helius credits
+-- Fixed version that handles TimescaleDB issues
 
 -- Drop old tables if they exist (clean slate for v2)
 DROP TABLE IF EXISTS holder_scores CASCADE;
@@ -8,10 +9,17 @@ DROP TABLE IF EXISTS holder_snapshots CASCADE;
 DROP TABLE IF EXISTS wallet_analysis CASCADE;
 DROP TABLE IF EXISTS token_holders CASCADE;
 DROP TABLE IF EXISTS wallet_analysis_cache CASCADE;
+DROP TABLE IF EXISTS holder_snapshots_v2 CASCADE;
+DROP TABLE IF EXISTS wallet_analysis_v2 CASCADE;
+DROP TABLE IF EXISTS holder_scores_v2 CASCADE;
+DROP TABLE IF EXISTS helius_api_usage CASCADE;
+DROP TABLE IF EXISTS holder_analysis_queue CASCADE;
+DROP MATERIALIZED VIEW IF EXISTS holder_analysis_summary CASCADE;
+DROP MATERIALIZED VIEW IF EXISTS holder_metrics_hourly CASCADE;
 
 -- Enhanced holder snapshots with comprehensive metrics
 CREATE TABLE IF NOT EXISTS holder_snapshots_v2 (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID DEFAULT gen_random_uuid(),
     token_id UUID REFERENCES tokens(id) NOT NULL,
     snapshot_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     
@@ -71,7 +79,10 @@ CREATE TABLE IF NOT EXISTS holder_snapshots_v2 (
     
     -- Metadata
     created_at TIMESTAMPTZ DEFAULT NOW(),
-    analysis_version VARCHAR(10) DEFAULT 'v2.0'
+    analysis_version TEXT DEFAULT 'v2.0',
+    
+    -- Add composite primary key for TimescaleDB
+    PRIMARY KEY (id, snapshot_time)
 );
 
 -- Create indexes for efficient querying
@@ -84,8 +95,17 @@ CREATE INDEX IF NOT EXISTS idx_snapshots_v2_bots ON holder_snapshots_v2(bot_rati
 DO $$
 BEGIN
     IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'timescaledb') THEN
-        PERFORM create_hypertable('holder_snapshots_v2', 'snapshot_time', if_not_exists => true);
+        -- Check if already a hypertable
+        IF NOT EXISTS (
+            SELECT 1 FROM timescaledb_information.hypertables 
+            WHERE hypertable_name = 'holder_snapshots_v2'
+        ) THEN
+            PERFORM create_hypertable('holder_snapshots_v2', 'snapshot_time', if_not_exists => true);
+        END IF;
     END IF;
+EXCEPTION
+    WHEN OTHERS THEN
+        RAISE NOTICE 'TimescaleDB hypertable creation skipped: %', SQLERRM;
 END $$;
 
 -- Enhanced wallet analysis cache with pattern detection
@@ -107,7 +127,7 @@ CREATE TABLE IF NOT EXISTS wallet_analysis_v2 (
     -- Financial metrics
     total_volume_usd DECIMAL(20,2),
     total_pnl_usd DECIMAL(20,2),
-    win_rate DECIMAL(5,4) CHECK (win_rate BETWEEN 0 AND 1),
+    win_rate DECIMAL(5,4) CHECK (win_rate IS NULL OR (win_rate BETWEEN 0 AND 1)),
     avg_hold_time_hours DECIMAL(10,2),
     graduated_tokens INT DEFAULT 0,
     rug_pull_exposure INT DEFAULT 0,
@@ -125,8 +145,8 @@ CREATE TABLE IF NOT EXISTS wallet_analysis_v2 (
     is_paper_hands BOOLEAN DEFAULT FALSE,
     
     -- Risk assessment
-    risk_score INT CHECK (risk_score BETWEEN 0 AND 100),
-    pump_dump_risk INT CHECK (pump_dump_risk BETWEEN 0 AND 100),
+    risk_score INT CHECK (risk_score IS NULL OR (risk_score BETWEEN 0 AND 100)),
+    pump_dump_risk INT CHECK (pump_dump_risk IS NULL OR (pump_dump_risk BETWEEN 0 AND 100)),
     
     -- Behavioral patterns
     avg_buy_size_sol DECIMAL(20,9),
@@ -152,7 +172,7 @@ CREATE INDEX IF NOT EXISTS idx_wallet_v2_cluster ON wallet_analysis_v2(cluster_i
 
 -- Holder scores with comprehensive breakdown
 CREATE TABLE IF NOT EXISTS holder_scores_v2 (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID DEFAULT gen_random_uuid(),
     token_id UUID REFERENCES tokens(id) NOT NULL,
     score_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     
@@ -187,7 +207,9 @@ CREATE TABLE IF NOT EXISTS holder_scores_v2 (
     
     -- Scoring metadata
     scoring_version VARCHAR(10) DEFAULT 'v2.0',
-    is_frozen BOOLEAN DEFAULT FALSE
+    is_frozen BOOLEAN DEFAULT FALSE,
+    
+    PRIMARY KEY (id, score_time)
 );
 
 -- Create indexes for holder scores
@@ -278,33 +300,6 @@ CREATE INDEX IF NOT EXISTS idx_summary_time ON holder_analysis_summary(snapshot_
 CREATE INDEX IF NOT EXISTS idx_summary_score ON holder_analysis_summary(total_score DESC) WHERE total_score IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_summary_risk ON holder_analysis_summary(overall_risk DESC);
 
--- Create continuous aggregate for time-series analysis (if TimescaleDB)
-DO $$
-BEGIN
-    IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'timescaledb') THEN
-        -- Hourly aggregates
-        EXECUTE 'CREATE MATERIALIZED VIEW holder_metrics_hourly
-        WITH (timescaledb.continuous) AS
-        SELECT
-            time_bucket(INTERVAL ''1 hour'', snapshot_time) AS hour,
-            token_id,
-            AVG(unique_holders) as avg_holders,
-            AVG(gini_coefficient) as avg_gini,
-            AVG(bot_ratio) as avg_bot_ratio,
-            AVG(smart_money_ratio) as avg_smart_money,
-            AVG(overall_risk) as avg_risk,
-            SUM(api_credits_used) as total_credits
-        FROM holder_snapshots_v2
-        GROUP BY hour, token_id';
-        
-        -- Add refresh policy
-        EXECUTE 'SELECT add_continuous_aggregate_policy(''holder_metrics_hourly'',
-            start_offset => INTERVAL ''3 hours'',
-            end_offset => INTERVAL ''1 hour'',
-            schedule_interval => INTERVAL ''1 hour'')';
-    END IF;
-END $$;
-
 -- Function to get optimal tokens for analysis
 CREATE OR REPLACE FUNCTION get_tokens_for_holder_analysis(
     p_limit INT DEFAULT 10
@@ -392,3 +387,12 @@ GRANT ALL ON ALL TABLES IN SCHEMA public TO postgres;
 INSERT INTO helius_api_usage (date, endpoint, credits_used)
 VALUES (CURRENT_DATE, 'initial', 0)
 ON CONFLICT DO NOTHING;
+
+-- Success message
+DO $$
+BEGIN
+    RAISE NOTICE 'Holder Analysis V2 migration completed successfully!';
+    RAISE NOTICE 'Tables created: holder_snapshots_v2, wallet_analysis_v2, holder_scores_v2, helius_api_usage, holder_analysis_queue';
+    RAISE NOTICE 'Functions created: get_tokens_for_holder_analysis, estimate_analysis_credits';
+    RAISE NOTICE 'Materialized view created: holder_analysis_summary';
+END $$;

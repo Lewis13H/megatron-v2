@@ -52,7 +52,7 @@ export class PatternDetector {
       timingPatterns: this.hasRegularTimingPatterns(wallet.signatures),
       
       // Behavioral signals
-      onlyBuys: wallet.buyCount > 0 && wallet.sellCount === 0,
+      onlyBuys: (wallet.buyCount || 0) > 0 && wallet.sellCount === 0,
       identicalTrades: this.hasIdenticalTrades(wallet.signatures),
       
       // MEV/Sandwich bot detection
@@ -434,7 +434,7 @@ export class PatternDetector {
     let pumpDumpScore = 0;
     
     // Early buyer who hasn't sold
-    if (wallet.walletAge < 1 && wallet.buyCount > 0 && wallet.sellCount === 0) {
+    if (wallet.walletAge < 1 && (wallet.buyCount || 0) > 0 && wallet.sellCount === 0) {
       pumpDumpScore += 30;
     }
     
@@ -468,7 +468,7 @@ export class PatternDetector {
     const isWellFunded = wallet.solBalance > 1;
     const isActive = wallet.transactionCount > 50;
     
-    return isAged && hasNotSold && isWellFunded && isActive;
+    return !!(isAged && hasNotSold && isWellFunded && isActive);
   }
   
   // Detect paper hands (quick sellers)

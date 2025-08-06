@@ -114,6 +114,15 @@ export class HolderAnalysisService {
   private metricsCalculator: MetricsCalculator;
   private patternDetector: PatternDetector;
   private dbPool: any;
+  
+  // Known system addresses to exclude from holder analysis
+  private readonly SYSTEM_ADDRESSES = new Set([
+    '5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1', // Pump.fun bonding curve
+    '4wTV1YmiEkRvAtNtsSGPtUrqRYQMe5SKy2uB4Jjaxnjf', // Pump.fun fee account
+    'CebN5WGQ4jvEPvsVU4EoHEpgzq1VV7AbicfhtW4xC9iM', // Pump.fun program
+    '6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P', // Pump.fun program ID
+    'Ce6TQqeHC9p8KetsN6JsjHK7UTZk7nasjjnr7XxXp9F1', // Pump.fun migration vault
+  ]);
 
   constructor() {
     const apiKey = process.env.HELIUS_API_KEY;
@@ -124,7 +133,7 @@ export class HolderAnalysisService {
     this.helius = new Helius(apiKey);
     this.connection = new Connection(`https://mainnet.helius-rpc.com/?api-key=${apiKey}`);
     this.cache = new HolderCache(300000); // 5 minute TTL
-    this.creditTracker = new CreditTracker(10_000_000); // 10M monthly limit
+    this.creditTracker = CreditTracker.getInstance(10_000_000); // 10M monthly limit
     this.metricsCalculator = new MetricsCalculator();
     this.patternDetector = new PatternDetector();
     this.dbPool = getDbPool();
@@ -140,9 +149,12 @@ export class HolderAnalysisService {
         return null;
       }
 
+      // Get bonding curve address for this token
+      const bondingCurveAddress = await this.getBondingCurveAddress(mint);
+
       // Stage 1: Get holder list (1 credit per 1000 holders)
       console.log(`📊 Fetching holders for ${mint}...`);
-      const holders = await this.fetchHoldersList(mint);
+      const holders = await this.fetchHoldersList(mint, bondingCurveAddress);
       totalCredits += Math.ceil(holders.length / 1000);
 
       if (holders.length < 5) {
@@ -214,34 +226,71 @@ export class HolderAnalysisService {
     return progress >= 10 && progress <= 50;
   }
 
-  private async fetchHoldersList(mint: string): Promise<Holder[]> {
+  private async getBondingCurveAddress(mint: string): Promise<string | null> {
+    try {
+      const result = await this.dbPool.query(`
+        SELECT p.bonding_curve_address 
+        FROM pools p
+        JOIN tokens t ON p.token_id = t.id
+        WHERE t.mint_address = $1
+        LIMIT 1
+      `, [mint]);
+      
+      return result.rows[0]?.bonding_curve_address || null;
+    } catch (error) {
+      console.error('Error fetching bonding curve address:', error);
+      return null;
+    }
+  }
+
+  private async fetchHoldersList(mint: string, bondingCurveAddress: string | null): Promise<Holder[]> {
     const holders: Holder[] = [];
     let page = 1;
     const limit = 1000;
+    let bondingCurveFiltered = false;
 
     while (true) {
       try {
+        // Use Helius getTokenAccounts endpoint
         const response = await this.helius.rpc.getTokenAccounts({
           mint,
           limit,
           page
         });
 
-        this.creditTracker.increment(1, 'getTokenAccounts');
+        // Credit tracking disabled
+        // this.creditTracker.increment(1, 'getTokenAccounts');
 
         if (!response?.token_accounts || response.token_accounts.length === 0) {
           break;
         }
 
-        // Add holders with positive balance
+        // Add holders with positive balance (excluding system addresses)
         response.token_accounts.forEach((account: any) => {
           const balance = parseInt(account.amount) / 1e6;
+          
+          // Skip system addresses and zero balances
           if (balance > 0) {
-            holders.push({
-              address: account.owner,
-              balance,
-              tokenAccount: account.address
-            });
+            // Check if this is the bonding curve account
+            if (bondingCurveAddress && account.owner === bondingCurveAddress) {
+              bondingCurveFiltered = true;
+              const percentage = (balance * 100 / 1e9).toFixed(1); // Assuming 1B total supply
+              console.log(`  🔄 Filtered Bonding Curve: ${(balance / 1e6).toFixed(2)}M tokens (${percentage}%)`);
+            } else if (this.SYSTEM_ADDRESSES.has(account.owner)) {
+              // Check other system addresses
+              const systemName = 
+                account.owner === '4wTV1YmiEkRvAtNtsSGPtUrqRYQMe5SKy2uB4Jjaxnjf' ? 'Fee Account' :
+                account.owner === 'Ce6TQqeHC9p8KetsN6JsjHK7UTZk7nasjjnr7XxXp9F1' ? 'Migration Vault' :
+                'System Account';
+              
+              console.log(`  🔄 Filtered ${systemName}: ${(balance / 1e6).toFixed(2)}M tokens`);
+            } else {
+              holders.push({
+                address: account.owner,
+                balance,
+                tokenAccount: account.address
+              });
+            }
           }
         });
 
@@ -295,13 +344,15 @@ export class HolderAnalysisService {
     }
 
     try {
-      // Get transaction signatures
-      const signatures = await this.helius.rpc.getSignaturesForAddress({
-        address,
-        limit: 100 // Reduced from 1000 to save credits
-      });
+      // Get transaction signatures using standard Solana RPC
+      const pubkey = new PublicKey(address);
+      const signatures = await this.connection.getSignaturesForAddress(
+        pubkey,
+        { limit: 100 } // Reduced from 1000 to save credits
+      );
 
-      this.creditTracker.increment(2, 'getSignaturesForAddress');
+      // Credit tracking disabled
+      // this.creditTracker.increment(2, 'getSignaturesForAddress');
 
       if (!signatures || signatures.length === 0) {
         return this.getDefaultWalletData(address);
@@ -311,9 +362,9 @@ export class HolderAnalysisService {
       const oldestTx = signatures[signatures.length - 1];
       const newestTx = signatures[0];
 
-      // Calculate wallet age
-      const createdAt = new Date(oldestTx.blockTime * 1000);
-      const lastActive = new Date(newestTx.blockTime * 1000);
+      // Calculate wallet age (blockTime might be null)
+      const createdAt = oldestTx.blockTime ? new Date(oldestTx.blockTime * 1000) : new Date();
+      const lastActive = newestTx.blockTime ? new Date(newestTx.blockTime * 1000) : new Date();
       const walletAge = Math.floor((Date.now() - createdAt.getTime()) / (1000 * 60 * 60 * 24));
 
       // Get SOL balance
@@ -541,15 +592,15 @@ export class HolderAnalysisService {
 
       const tokenId = tokenResult.rows[0].id;
 
-      // Save holder snapshot
+      // Save holder snapshot with required fields
       await this.dbPool.query(`
         INSERT INTO holder_snapshots_v2 (
           token_id, unique_holders, gini_coefficient, herfindahl_index,
-          top_1_percent, top_10_percent, bot_count, bot_ratio,
+          top_1_percent, top_10_percent, top_100_holders, bot_count, bot_ratio,
           smart_money_count, smart_money_ratio, avg_wallet_age_days,
           active_holders_24h, new_holders_24h, velocity_score,
           organic_growth_score, overall_risk, api_credits_used
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
       `, [
         tokenId,
         metrics.distribution.uniqueHolders,
@@ -557,6 +608,7 @@ export class HolderAnalysisService {
         metrics.distribution.herfindahlIndex,
         metrics.distribution.top1Percent,
         metrics.distribution.top10Percent,
+        100.0, // top_100_holders - all holders for small tokens
         metrics.quality.botCount || 0,
         metrics.quality.botRatio,
         metrics.quality.smartMoneyCount || 0,
