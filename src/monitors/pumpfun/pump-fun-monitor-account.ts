@@ -375,6 +375,21 @@ export class PumpFunAccountMonitor {
       // Add price if available
       if (data.price) {
         updateData.latest_price = data.price;
+        
+        // Also calculate and update USD price
+        try {
+          const solPriceResult = await getDbPool().query(
+            'SELECT price_usd FROM sol_usd_prices ORDER BY price_time DESC LIMIT 1'
+          );
+          if (solPriceResult.rows.length > 0) {
+            const solPrice = parseFloat(solPriceResult.rows[0].price_usd);
+            const priceInSol = parseFloat(data.price);
+            const priceUsd = priceInSol * solPrice;
+            updateData.latest_price_usd = priceUsd.toFixed(20).replace(/0+$/, '');
+          }
+        } catch (error) {
+          console.error('Error fetching SOL price for USD calculation:', error);
+        }
       }
       
       await this.poolOperations.updatePoolReserves(bondingCurveAddress, updateData);

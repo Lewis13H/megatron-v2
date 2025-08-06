@@ -18,7 +18,7 @@ import { SolanaEventParser } from "./utils/event-parser";
 import { bnLayoutFormatter } from "./utils/bn-layout-formatter";
 import pumpFunAmmIdl from "./idls/pump_0.1.0.json";
 import { parseSwapTransactionOutput } from "./utils/pumpfun_formatted_txn";
-import { getDbPool } from "../../database";
+import { getDbPool, monitorService } from "../../database";
 // import { pumpfunIntegration } from "../utils/enhanced-integration"; // Removed during cleanup
 
 interface SubscribeRequest {
@@ -52,6 +52,29 @@ PUMP_FUN_EVENT_PARSER.addParserFromIdl(
 // Initialize database pool
 const dbPool = getDbPool();
 
+// Cache SOL price for 5 seconds to reduce DB queries
+let solPriceCache: { price: number; timestamp: number } | null = null;
+const SOL_PRICE_CACHE_MS = 5000;
+
+async function getCachedSolPrice(): Promise<number> {
+  const now = Date.now();
+  if (solPriceCache && (now - solPriceCache.timestamp) < SOL_PRICE_CACHE_MS) {
+    return solPriceCache.price;
+  }
+  
+  try {
+    const result = await dbPool.query(
+      'SELECT price_usd FROM sol_usd_prices ORDER BY price_time DESC LIMIT 1'
+    );
+    const price = result.rows[0]?.price_usd ? parseFloat(result.rows[0].price_usd) : 165;
+    solPriceCache = { price, timestamp: now };
+    return price;
+  } catch (error) {
+    console.error('Error fetching SOL price:', error);
+    return solPriceCache?.price || 165;
+  }
+}
+
 async function handleStream(client: Client, args: SubscribeRequest) {
   // Subscribe for events
   console.log("Streaming ...");
@@ -83,33 +106,30 @@ async function handleStream(client: Client, args: SubscribeRequest) {
       const parsedTxn = decodePumpFunTxn(txn);
 
       if (!parsedTxn) return;
+      
+      // Check if this is a buy or sell transaction
+      const swapInstruction = parsedTxn.instructions?.pumpFunIxs?.find(
+        (ix: any) => ix.name === 'buy' || ix.name === 'sell'
+      );
+      
+      if (!swapInstruction) return; // Skip non-swap transactions
+      
       const formattedSwapTxn = parseSwapTransactionOutput(parsedTxn);
       
       if (!formattedSwapTxn) return;
       
-      // Get current SOL price for USD calculations
-      let priceUsd = null;
-      let marketCapUsd = null;
-      try {
-        const solPriceResult = await dbPool.query(
-          'SELECT price_usd FROM sol_usd_prices ORDER BY price_time DESC LIMIT 1'
-        );
-        if (solPriceResult.rows.length > 0) {
-          const solPrice = parseFloat(solPriceResult.rows[0].price_usd);
-          priceUsd = parseFloat(formattedSwapTxn.formattedPrice) * solPrice;
-          marketCapUsd = priceUsd * 1_000_000_000; // 1 billion token supply
-        }
-      } catch (error) {
-        console.error('Error fetching SOL price:', error);
-      }
+      // Get current SOL price for USD calculations (using cache)
+      const solPrice = await getCachedSolPrice();
+      const priceUsd = parseFloat(formattedSwapTxn.formattedPrice) * solPrice;
+      const marketCapUsd = priceUsd * 1_000_000_000; // 1 billion token supply
       
       console.log(
         new Date(),
         ":",
-        `New transaction https://translator.shyft.to/tx/${txn.transaction.signatures[0]}`,
+        `New ${swapInstruction.name} transaction https://translator.shyft.to/tx/${txn.transaction.signatures[0]}`,
         `\n📊 Bonding Curve Progress: ${formattedSwapTxn.bondingCurveProgress.toFixed(2)}%`,
-        `\n💰 Price: ${formattedSwapTxn.formattedPrice} SOL` + (priceUsd ? ` ($${priceUsd.toFixed(9)} USD)` : ''),
-        `\n📈 Market Cap:` + (marketCapUsd ? ` $${marketCapUsd.toFixed(2)} USD` : ' N/A'),
+        `\n💰 Price: ${formattedSwapTxn.formattedPrice} SOL ($${priceUsd.toFixed(9)} USD)`,
+        `\n📈 Market Cap: $${marketCapUsd.toFixed(2)} USD`,
         `\n${JSON.stringify(formattedSwapTxn, null, 2)}\n`
       );
       
@@ -130,20 +150,56 @@ async function handleStream(client: Client, args: SubscribeRequest) {
             bonding_curve_address = $8,
             updated_at = NOW()
           WHERE pool_address = $8
+          RETURNING token_id, id
         `;
         
-        await dbPool.query(updateQuery, [
+        const poolResult = await dbPool.query(updateQuery, [
           formattedSwapTxn.virtual_sol_reserves.toString(),
           formattedSwapTxn.virtual_token_reserves.toString(),
           formattedSwapTxn.real_sol_reserves?.toString() || '0',
           formattedSwapTxn.real_token_reserves?.toString() || '0',
           formattedSwapTxn.formattedPrice,
-          priceUsd ? priceUsd.toFixed(20).replace(/0+$/, '') : null,
+          priceUsd.toFixed(20).replace(/0+$/, ''),
           formattedSwapTxn.bondingCurveProgress.toFixed(2),
           formattedSwapTxn.bonding_curve
         ]);
         
-        console.log("💾 Price update saved to database");
+        // Save transaction record if pool exists
+        if (poolResult.rows.length > 0) {
+          const { token_id, id: pool_id } = poolResult.rows[0];
+          
+          // Calculate SOL amount from the swap
+          // For buys: user sends SOL, for sells: user receives SOL
+          const solAmount = Math.abs(
+            (parseFloat(formattedSwapTxn.virtual_sol_reserves) - parseFloat(formattedSwapTxn.real_sol_reserves)) / 1e9
+          );
+          
+          const userAccount = swapInstruction.accounts?.find((a: any) => a.name === 'user');
+          const userAddress = userAccount?.pubkey ? 
+            (typeof userAccount.pubkey === 'string' ? userAccount.pubkey : userAccount.pubkey.toString()) : '';
+          
+          await monitorService.saveTransaction({
+            signature: txn.transaction.signatures[0],
+            token_id,
+            pool_id,
+            type: swapInstruction.name as 'buy' | 'sell',
+            block_time: new Date(),
+            slot: data.slot || 0,
+            user_address: userAddress,
+            sol_amount: solAmount.toString(),
+            token_amount: '0', // Would need to calculate from reserves change
+            price_per_token: parseFloat(formattedSwapTxn.formattedPrice),
+            metadata: {
+              bondingCurveProgress: formattedSwapTxn.bondingCurveProgress,
+              virtualSolReserves: formattedSwapTxn.virtual_sol_reserves,
+              virtualTokenReserves: formattedSwapTxn.virtual_token_reserves,
+              priceUsd: priceUsd,
+              marketCapUsd: marketCapUsd
+            }
+          });
+        }
+        
+        console.log("💾 Price update and transaction saved to database");
         
         // Update technical score based on price change
         // Technical scores are calculated on-demand in dashboard

@@ -26,7 +26,7 @@ class Dashboard {
 
   async updateTokens() {
     try {
-      const response = await fetch(`${this.apiUrl}/tokens`);
+      const response = await fetch(`${this.apiUrl}/tokens?limit=2000`);
       const data = await response.json();
       
       if (data.tokens) {
@@ -335,10 +335,18 @@ class Dashboard {
     prevBtn.onclick = () => this.changePage(this.currentPage - 1);
     pagination.appendChild(prevBtn);
     
-    // Page info
+    // Page info with prominent total display
     const pageInfo = document.createElement('span');
     pageInfo.className = 'page-info';
-    pageInfo.textContent = `Page ${this.currentPage} of ${totalPages} (${this.totalTokens} tokens)`;
+    const startItem = ((this.currentPage - 1) * this.tokensPerPage) + 1;
+    const endItem = Math.min(this.currentPage * this.tokensPerPage, this.totalTokens);
+    pageInfo.innerHTML = `
+      <span style="font-size: 1.1em; font-weight: 600;">
+        Showing ${startItem}-${endItem} of <span style="color: #00ff00;">${this.totalTokens}</span> tokens
+      </span>
+      <br>
+      <span style="font-size: 0.9em; opacity: 0.8;">Page ${this.currentPage} of ${totalPages}</span>
+    `;
     pagination.appendChild(pageInfo);
     
     // Next button
@@ -348,6 +356,14 @@ class Dashboard {
     nextBtn.disabled = this.currentPage === totalPages;
     nextBtn.onclick = () => this.changePage(this.currentPage + 1);
     pagination.appendChild(nextBtn);
+    
+    // Last button
+    const lastBtn = document.createElement('button');
+    lastBtn.className = 'pagination-btn';
+    lastBtn.textContent = 'Last ⇥';
+    lastBtn.disabled = this.currentPage === totalPages;
+    lastBtn.onclick = () => this.changePage(totalPages);
+    pagination.appendChild(lastBtn);
   }
   
   changePage(page) {

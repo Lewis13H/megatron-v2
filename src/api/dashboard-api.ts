@@ -27,6 +27,10 @@ router.get('/tokens', async (req, res) => {
   try {
     const pool = getDbPool();
     
+    // Get limit from query params, default to 500, max 2000
+    const requestedLimit = parseInt(req.query.limit as string) || 500;
+    const limit = Math.min(requestedLimit, 2000);
+    
     // First get the latest SOL price
     const solPriceResult = await pool.query(`
       SELECT price_usd 
@@ -72,7 +76,7 @@ router.get('/tokens', async (req, res) => {
             AND tx.block_time > NOW() - INTERVAL '24 hours'
           )
         ORDER BY p.latest_price_usd DESC NULLS LAST
-        LIMIT 50
+        LIMIT $1
       ),
       tokens_with_scores AS (
         SELECT 
@@ -150,7 +154,7 @@ router.get('/tokens', async (req, res) => {
         tws.created_at DESC
     `;
 
-    const result = await pool.query(query);
+    const result = await pool.query(query, [limit]);
     
     // Format the data for frontend
     const tokens = result.rows.map((row: any, index: number) => {
