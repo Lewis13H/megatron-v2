@@ -192,21 +192,23 @@ class PumpSwapPoolMonitor {
       await monitorService.savePool({
         pool_address: poolAddress,
         token_id: token.id,
-        base_mint: tokenMint,
-        quote_mint: SOL_MINT,
         platform: 'pumpswap',
-        pool_type: 'graduated',
-        status: 'active',
-        lp_mint: poolData.lpMint.toString(),
-        virtual_sol_reserves: '0',
-        virtual_token_reserves: '0',
-        real_sol_reserves: poolData.solReserves.toString(),
-        real_token_reserves: poolData.tokenReserves.toString(),
-        bonding_curve_progress: null,
-        initial_price: initialPrice,
-        initial_price_usd: initialPrice * 200, // Approximate SOL price
-        latest_price: initialPrice,
-        latest_price_usd: initialPrice * 200,
+        creation_signature: poolAddress, // Use pool address as signature since we don't have tx signature
+        creation_timestamp: new Date(Number(poolData.createdAt) * 1000),
+        initial_real_sol_reserves: poolData.solReserves.toString(),
+        initial_real_token_reserves: poolData.tokenReserves.toString(),
+        is_active: true,
+        metadata: {
+          base_mint: tokenMint,
+          quote_mint: SOL_MINT,
+          pool_type: 'graduated',
+          status: 'active',
+          lp_mint: poolData.lpMint.toString(),
+          initial_price: initialPrice,
+          initial_price_usd: initialPrice * 200, // Approximate SOL price
+          latest_price: initialPrice,
+          latest_price_usd: initialPrice * 200
+        }
       });
 
       console.log(`💾 Saved new PumpSwap pool for ${token.symbol}`);

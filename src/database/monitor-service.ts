@@ -218,6 +218,21 @@ export class MonitorService extends BaseOperations {
   }
 
   /**
+   * Update token graduation status
+   */
+  async updateGraduationStatus(
+    mintAddress: string,
+    graduationSignature: string,
+    graduationTimestamp: Date
+  ): Promise<void> {
+    await this.tokenOps.updateGraduationStatus(
+      mintAddress,
+      graduationSignature,
+      graduationTimestamp
+    );
+  }
+
+  /**
    * Get or resolve token and pool IDs from mint address
    */
   private async getTokenAndPoolIds(

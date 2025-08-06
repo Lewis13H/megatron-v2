@@ -29,7 +29,7 @@
     "holder:smart": "npx ts-node src/monitors/holder-score-smart-monitor.ts",
     "test:holder": "npx ts-node src/test/test-holder-score.ts",
     "pumpswap:monitor": "npx ts-node src/monitors/pumpswap/pumpswap-amm-monitor.ts",
-    "pumpswap:pool": "npx ts-node src/monitors/pumpswap/pumpswap-pool-monitor.ts",
+    "pumpswap:pool": "npx tsx src/monitors/pumpswap/pumpswap-new-pool-monitor.ts",
     "pumpswap:transaction": "npx ts-node src/monitors/pumpswap/pumpswap-transaction-monitor.ts",
     "pumpswap:price": "npx ts-node src/monitors/pumpswap/pumpswap-price-monitor.ts"
   },

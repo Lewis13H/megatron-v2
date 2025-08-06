@@ -18,6 +18,7 @@ import { SolanaEventParser } from "./utils/event-parser";
 import { bnLayoutFormatter } from "./utils/bn-layout-formatter";
 import raydiumLaunchpadIdl from "./idls/raydium_launchpad.json";
 import { monitorService } from "../../database";
+import { PoolData } from "../../database/types";
 
 interface SubscribeRequest {
   accounts: { [key: string]: SubscribeRequestFilterAccounts };
@@ -428,7 +429,23 @@ ${parsedTx.events.map(evt => `  - ${evt.name || 'Event'}`).join('\n')}` : ''}
         // Initial liquidity will be populated from first transaction or account update
       };
 
-      await poolOperations.insertPoolWithToken(poolData, parsedTx.data.baseMint);
+      // First save the token if it doesn't exist
+      const tokenId = await monitorService.saveToken({
+        mint_address: parsedTx.data.baseMint,
+        platform: 'raydium_launchpad',
+        creation_signature: parsedTx.signature,
+        creation_timestamp: new Date(parsedTx.blockTime),
+        creator_address: parsedTx.user,
+        decimals: parsedTx.data.decimals || 6,
+      });
+      
+      // Then save the pool
+      await monitorService.savePool({
+        ...poolData,
+        token_id: tokenId,
+        creation_signature: parsedTx.signature,
+        creation_timestamp: new Date(parsedTx.blockTime),
+      });
       console.log(`💾 Pool saved to database: ${parsedTx.data.poolId}`);
     } catch (error: any) {
       if (error.message?.includes('Token not found')) {

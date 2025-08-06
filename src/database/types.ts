@@ -9,7 +9,7 @@ export interface Token {
   symbol?: string;
   name?: string;
   decimals: number;
-  platform: 'pumpfun' | 'raydium' | 'raydium_launchpad';
+  platform: 'pumpfun' | 'raydium' | 'raydium_launchpad' | 'pumpswap';
   creation_signature: string;
   creation_timestamp: Date;
   creator_address: string;
@@ -27,7 +27,7 @@ export interface Pool {
   token_id: string;
   base_mint: string;
   quote_mint: string;
-  platform: 'pumpfun' | 'raydium' | 'raydium_launchpad';
+  platform: 'pumpfun' | 'raydium' | 'raydium_launchpad' | 'pumpswap';
   initial_price?: number;
   initial_price_usd?: string;
   initial_base_liquidity?: string;
@@ -66,7 +66,7 @@ export interface PoolData {
   pool_address: string;
   base_mint: string;
   quote_mint: string;
-  platform: 'pumpfun' | 'raydium' | 'raydium_launchpad';
+  platform: 'pumpfun' | 'raydium' | 'raydium_launchpad' | 'pumpswap';
   initial_price?: number;
   initial_price_usd?: string;
   initial_base_liquidity?: string;
@@ -165,7 +165,7 @@ export interface TokenData {
   symbol?: string;
   name?: string;
   decimals?: number;
-  platform: 'pumpfun' | 'raydium' | 'raydium_launchpad';
+  platform: 'pumpfun' | 'raydium' | 'raydium_launchpad' | 'pumpswap';
   creation_signature: string;
   creation_timestamp: Date;
   creator_address: string;
@@ -176,7 +176,7 @@ export interface TokenData {
 export interface MonitorPoolData {
   pool_address: string;
   token_id: string;
-  platform: 'pumpfun' | 'raydium' | 'raydium_launchpad';
+  platform: 'pumpfun' | 'raydium' | 'raydium_launchpad' | 'pumpswap';
   creation_signature: string;
   creation_timestamp: Date;
   initial_virtual_sol_reserves?: string;
