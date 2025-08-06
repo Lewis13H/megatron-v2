@@ -83,32 +83,75 @@ PUMP_FUN_EVENT_PARSER.addParserFromIdl(
 // Function to fetch metadata from URI
 async function fetchTokenMetadata(uri: string): Promise<TokenMetadata | null> {
   try {
-    // Handle IPFS URIs
+    // Handle IPFS URIs with Pinata gateway
     let fetchUrl = uri;
+    let headers: any = {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+    };
+    
     if (uri.startsWith('ipfs://')) {
-      // Use a public IPFS gateway
-      fetchUrl = uri.replace('ipfs://', 'https://ipfs.io/ipfs/');
+      // Extract CID and use Pinata's dedicated gateway
+      const cid = uri.replace('ipfs://', '');
+      fetchUrl = `https://gateway.pinata.cloud/ipfs/${cid}`;
     } else if (uri.includes('/ipfs/')) {
-      // Already formatted as gateway URL, try alternative gateways if needed
-      fetchUrl = uri.replace('https://ipfs.io/', 'https://gateway.pinata.cloud/');
+      // Extract CID from various IPFS gateway URLs
+      const match = uri.match(/\/ipfs\/([a-zA-Z0-9]+)/);
+      if (match) {
+        fetchUrl = `https://gateway.pinata.cloud/ipfs/${match[1]}`;
+      }
+    }
+    
+    // Add Pinata API key if available
+    const PINATA_API_KEY = process.env.PINATA_API || '1bef1ab8e75e75f88fa4';
+    if (PINATA_API_KEY) {
+      headers['x-pinata-gateway-token'] = PINATA_API_KEY;
     }
     
     console.log(`📡 Fetching metadata from: ${fetchUrl}`);
     
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+    const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
     
     const response = await fetch(fetchUrl, {
       signal: controller.signal,
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-      }
+      headers
     });
     
     clearTimeout(timeoutId);
     
     if (!response.ok) {
       console.error(`❌ Failed to fetch metadata: ${response.status} ${response.statusText}`);
+      
+      // Try fallback gateways if Pinata fails
+      if (response.status === 429 || response.status === 403) {
+        console.log(`🔄 Trying fallback IPFS gateways...`);
+        const fallbackGateways = [
+          'https://ipfs.io',
+          'https://cloudflare-ipfs.com',
+          'https://dweb.link'
+        ];
+        
+        for (const gateway of fallbackGateways) {
+          try {
+            const fallbackUrl = fetchUrl.replace('https://gateway.pinata.cloud', gateway);
+            console.log(`🔄 Trying: ${fallbackUrl}`);
+            
+            const fallbackResponse = await fetch(fallbackUrl, {
+              headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+              }
+            });
+            
+            if (fallbackResponse.ok) {
+              const metadata = await fallbackResponse.json() as TokenMetadata;
+              console.log(`✅ Successfully fetched metadata from fallback gateway`);
+              return metadata;
+            }
+          } catch (fallbackError) {
+            continue;
+          }
+        }
+      }
       return null;
     }
     
