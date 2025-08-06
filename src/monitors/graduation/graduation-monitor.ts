@@ -2,7 +2,8 @@ import "dotenv/config";
 import Client, {
   CommitmentLevel,
   SubscribeRequest,
-  SubscribeRequestFilterTransactions
+  SubscribeRequestFilterTransactions,
+  SubscribeRequestFilterAccounts
 } from "@triton-one/yellowstone-grpc";
 import { PublicKey, VersionedTransactionResponse } from "@solana/web3.js";
 import { Idl } from "@coral-xyz/anchor";
@@ -12,6 +13,8 @@ import * as fs from "fs";
 import * as path from "path";
 // @ts-ignore - Raydium SDK types
 import { LIQUIDITY_STATE_LAYOUT_V4 } from "@raydium-io/raydium-sdk";
+import { struct, bool, u64 } from "@coral-xyz/borsh";
+import { monitorService } from "../../database";
 import { TransactionFormatter } from "./utils/transaction-formatter";
 import { bnLayoutFormatter } from "./utils/bn-layout-formatter";
 import { SolanaEventParser } from "./utils/event-parser";
@@ -20,23 +23,38 @@ import { SolanaEventParser } from "./utils/event-parser";
 const PUMP_PROGRAM_ID = "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P";
 const MIGRATION_ACCOUNT = "39azUYFWPz3VHgKCf3VChUwbpURdCHRxjWVowf5jUJjg";
 const RAYDIUM_AMM_V4 = "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8";
-const PUMP_SWAP_AMM = "PumpkinsUmdZxR1XXkUHJnJjBFQfX3pnyM3KiR5Q1B1"; // Update with actual PumpSwap AMM ID
+const RAYDIUM_CPMM = "CPMMoo8L3F4NbTegBCKVNunggL7H1ZpdTHKxQB5qKP1C";
+const PUMP_SWAP_AMM = "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA"; // PumpSwap AMM program
+
+// Bonding curve account structure (from Shyft example)
+const bondingCurveStructure = struct([
+  u64("discriminator"),
+  u64("virtualTokenReserves"),
+  u64("virtualSolReserves"),
+  u64("realTokenReserves"),
+  u64("realSolReserves"),
+  u64("tokenTotalSupply"),
+  bool("complete"),
+]);
 
 // Track graduation states
 interface GraduationEvent {
   tokenMint: string;
   bondingCurve: string;
-  graduationTx: string;
-  targetAmm: "raydium" | "pumpswap" | "pumpfun";
+  bondingCurveComplete: boolean;
+  graduationTx?: string;
+  targetAmm?: "raydium" | "pumpswap" | "pumpfun";
   poolAddress?: string;
   timestamp: number;
   poolCreationTx?: string;
 }
 
 const graduationTracker = new Map<string, GraduationEvent>();
+const bondingCurveToMint = new Map<string, string>();
 
 // Track seen pools to avoid duplicates
 const seenPools = new Set<string>();
+const seenBondingCurves = new Set<string>();
 const POOL_CACHE_DURATION = 60 * 60 * 1000; // 1 hour in milliseconds
 
 class GraduationMonitor {
@@ -74,28 +92,60 @@ class GraduationMonitor {
 
   async start() {
     console.log("\n" + "=".repeat(80));
-    console.log("🎓 PUMP.FUN GRADUATION MONITOR");
+    console.log("🎓 PUMP.FUN GRADUATION MONITOR V2");
     console.log("=".repeat(80));
-    console.log("📍 Tracking: Token graduations from Pump.fun to AMMs");
+    console.log("📍 Tracking:");
+    console.log("   - Pump.fun bonding curve completion (complete = true)");
+    console.log("   - Graduated token pool creation on Raydium/PumpSwap");
+    console.log("   - Post-graduation price monitoring");
     console.log("🎯 Migration Account: " + MIGRATION_ACCOUNT);
-    console.log("🏊 Target AMMs: Raydium, PumpSwap, Pump.fun AMM");
-    console.log("🕐 Pool Filter: Only showing pools created in the last hour");
-    console.log("🔍 Duplicate Filter: Each pool shown only once");
+    console.log("🏊 Target AMMs: Raydium V4, Raydium CPMM, PumpSwap");
     console.log("=".repeat(80) + "\n");
     
     // Periodic cleanup of seen pools cache (every 2 hours)
     setInterval(() => {
       const oldSize = seenPools.size;
       seenPools.clear();
-      console.log(`\n🧹 Cleared pool cache (was tracking ${oldSize} pools)\n`);
+      seenBondingCurves.clear();
+      console.log(`\n🧹 Cleared cache (was tracking ${oldSize} pools)\n`);
     }, 2 * 60 * 60 * 1000);
     
     // Start monitoring streams in parallel
     await Promise.all([
+      this.monitorBondingCurveCompletion(),
       this.monitorMigrationTransactions(),
       this.monitorRaydiumPools(),
       // Add PumpSwap monitoring when available
     ]);
+  }
+
+  private async monitorBondingCurveCompletion() {
+    const req: SubscribeRequest = {
+      slots: {},
+      accounts: {
+        pumpfun: {
+          account: [],
+          filters: [
+            {
+              memcmp: {
+                offset: bondingCurveStructure.offsetOf('complete').toString(),
+                bytes: Uint8Array.from([1]) // Filter for complete = true
+              }
+            }
+          ],
+          owner: [PUMP_PROGRAM_ID]
+        }
+      },
+      transactions: {},
+      blocks: {},
+      blocksMeta: {},
+      accountsDataSlice: [],
+      commitment: CommitmentLevel.PROCESSED,
+      entry: {},
+      transactionsStatus: {}
+    };
+
+    await this.subscribe(req, this.handleBondingCurveCompletion.bind(this));
   }
 
   private async monitorMigrationTransactions() {
@@ -132,13 +182,13 @@ class GraduationMonitor {
           filters: [
             {
               memcmp: {
-                offset: LIQUIDITY_STATE_LAYOUT_V4.offsetOf("quoteMint").toString(),
+                offset: LIQUIDITY_STATE_LAYOUT_V4.offsetOf('quoteMint').toString(),
                 base58: "So11111111111111111111111111111111111111112"
               }
             },
             {
               memcmp: {
-                offset: LIQUIDITY_STATE_LAYOUT_V4.offsetOf("marketProgramId").toString(),
+                offset: LIQUIDITY_STATE_LAYOUT_V4.offsetOf('marketProgramId').toString(),
                 base58: "srmqPvymJeFKQ4zGQed1GFppgkRHL9kaELCbyksJtPX"
               }
             }
@@ -205,6 +255,60 @@ class GraduationMonitor {
     this.streams.delete(stream);
   }
 
+  private async handleBondingCurveCompletion(data: any) {
+    if (!data?.account) return;
+
+    try {
+      const bondingCurveAddress = bs58.encode(data.account.account.pubkey);
+      
+      // Skip if we've already seen this bonding curve
+      if (seenBondingCurves.has(bondingCurveAddress)) {
+        return;
+      }
+      seenBondingCurves.add(bondingCurveAddress);
+
+      // Decode bonding curve data
+      const bondingCurveData = bondingCurveStructure.decode(
+        Buffer.from(data.account.account.data, "base64")
+      );
+
+      if (bondingCurveData.complete) {
+        // Get token mint from bonding curve account
+        // In Pump.fun, the bonding curve PDA is derived from the token mint
+        // We need to extract the mint from the account data or use a reverse lookup
+        
+        // For now, we'll wait for the migration transaction to get the full details
+        console.log("\n" + "✅".repeat(40));
+        console.log("✅ BONDING CURVE COMPLETED!");
+        console.log("─".repeat(80));
+        console.log(`⏰ Time: ${new Date().toLocaleString()}`);
+        console.log(`📊 Bonding Curve: ${bondingCurveAddress}`);
+        console.log(`💧 Final SOL Reserves: ${(Number(bondingCurveData.virtualSolReserves) / 1e9).toFixed(4)} SOL`);
+        console.log(`🪙 Final Token Reserves: ${(Number(bondingCurveData.virtualTokenReserves) / 1e6).toFixed(0)}`);
+        console.log(`✨ Status: READY FOR GRADUATION`);
+        console.log("✅".repeat(40) + "\n");
+
+        // Update database - mark bonding curve as 100% complete
+        try {
+          const pool = await monitorService.getPoolByAddress(bondingCurveAddress);
+          if (pool) {
+            await monitorService.updatePoolProgress(pool.id, 100.00);
+            await monitorService.updatePoolStatus(pool.id, 'graduated');
+            
+            // Mark token as graduated
+            if (pool.token_id) {
+              await monitorService.markTokenAsGraduated(pool.token_id, null);
+            }
+          }
+        } catch (error) {
+          console.error("Error updating database:", error);
+        }
+      }
+    } catch (error) {
+      console.error("Error processing bonding curve account:", error);
+    }
+  }
+
   private async handleMigrationTransaction(data: any) {
     if (!data?.transaction) return;
 
@@ -212,42 +316,60 @@ class GraduationMonitor {
       const txn = this.txFormatter.formTransactionFromJson(data.transaction, Date.now());
       const signature = txn.transaction.signatures[0];
 
-      // Parse transaction to look for graduation
+      // Parse transaction to look for graduation details
       const parsedIxs = await this.parseTransaction(txn);
       if (!parsedIxs || parsedIxs.length === 0) return;
 
-      // Look for initialize2 instruction (Raydium pool creation)
-      const hasInitialize2 = parsedIxs.some((ix: any) => 
-        ix.name === "initialize2" || ix.name === "Initialize2"
-      );
+      // Extract token mint and bonding curve from transaction
+      const tokenMint = await this.extractTokenMintFromTx(txn, parsedIxs);
+      const bondingCurve = await this.extractBondingCurveFromTx(txn, parsedIxs);
+      
+      if (!tokenMint) return;
 
-      if (hasInitialize2) {
-        // Extract token mint from transaction
-        const tokenMint = await this.extractTokenMintFromTx(txn, parsedIxs);
-        if (!tokenMint) return;
+      // Determine target AMM
+      const targetAmm = this.determineTargetAmm(txn);
+      
+      const event: GraduationEvent = {
+        tokenMint,
+        bondingCurve: bondingCurve || "",
+        bondingCurveComplete: true,
+        graduationTx: signature,
+        targetAmm,
+        timestamp: Date.now()
+      };
 
-        // Determine target AMM
-        const targetAmm = this.determineTargetAmm(txn);
-        
-        const event: GraduationEvent = {
-          tokenMint,
-          bondingCurve: "", // Would need to extract from tx
-          graduationTx: signature,
-          targetAmm,
-          timestamp: Date.now()
-        };
+      graduationTracker.set(tokenMint, event);
+      if (bondingCurve) {
+        bondingCurveToMint.set(bondingCurve, tokenMint);
+      }
 
-        graduationTracker.set(tokenMint, event);
+      console.log("\n" + "🎉".repeat(40));
+      console.log("🎓 GRADUATION TRANSACTION DETECTED!");
+      console.log("─".repeat(80));
+      console.log(`⏰ Time: ${new Date().toLocaleString()}`);
+      console.log(`🪙 Token Mint: ${tokenMint}`);
+      console.log(`📊 Bonding Curve: ${bondingCurve || 'N/A'}`);
+      console.log(`📝 Transaction: https://solscan.io/tx/${signature}`);
+      console.log(`🎯 Target AMM: ${targetAmm.toUpperCase()}`);
+      console.log(`🔗 Pump.fun: https://pump.fun/coin/${tokenMint}`);
+      console.log("🎉".repeat(40) + "\n");
 
-        console.log("\n" + "🎉".repeat(40));
-        console.log("🎓 GRADUATION DETECTED!");
-        console.log("─".repeat(80));
-        console.log(`⏰ Time: ${new Date().toLocaleString()}`);
-        console.log(`🪙 Token Mint: ${tokenMint}`);
-        console.log(`📝 Transaction: https://solscan.io/tx/${signature}`);
-        console.log(`🎯 Target AMM: ${targetAmm.toUpperCase()}`);
-        console.log(`🔗 Pump.fun: https://pump.fun/coin/${tokenMint}`);
-        console.log("🎉".repeat(40) + "\n");
+      // Update database
+      try {
+        const token = await monitorService.getTokenByMint(tokenMint);
+        if (token) {
+          await monitorService.markTokenAsGraduated(token.id, signature);
+          
+          // Update pool status if we have the bonding curve
+          if (bondingCurve) {
+            const pool = await monitorService.getPoolByAddress(bondingCurve);
+            if (pool) {
+              await monitorService.updatePoolStatus(pool.id, 'graduated');
+            }
+          }
+        }
+      } catch (error) {
+        console.error("Error updating database:", error);
       }
     } catch (error) {
       // Suppress parsing errors
@@ -293,7 +415,7 @@ class GraduationMonitor {
         graduationTracker.set(baseMint, event);
 
         console.log("\n" + "🏊".repeat(40));
-        console.log("🏊 RAYDIUM POOL CREATED!");
+        console.log("🏊 RAYDIUM POOL CREATED FOR GRADUATED TOKEN!");
         console.log("─".repeat(80));
         console.log(`⏰ Time: ${new Date().toLocaleString()}`);
         console.log(`🪙 Token Mint: ${baseMint}`);
@@ -305,6 +427,9 @@ class GraduationMonitor {
         console.log(`✅ GRADUATION COMPLETE!`);
         console.log(`⏱️  Total Time: ${((Date.now() - event.timestamp) / 1000).toFixed(2)}s`);
         console.log("🏊".repeat(40) + "\n");
+
+        // Create new pool in database for the graduated token
+        this.createGraduatedPool(baseMint, poolAddress, 'raydium', poolInfo);
       } else {
         // New pool for non-graduated token
         const ageMinutes = Math.floor(poolAge / 60000);
@@ -316,6 +441,39 @@ class GraduationMonitor {
       }
     } catch (error) {
       // Not a valid Raydium pool account
+    }
+  }
+
+  private async createGraduatedPool(tokenMint: string, poolAddress: string, platform: string, poolInfo: any) {
+    try {
+      const token = await monitorService.getTokenByMint(tokenMint);
+      if (!token) {
+        console.error(`Token not found for mint: ${tokenMint}`);
+        return;
+      }
+
+      // Create a new pool entry for the graduated token
+      await monitorService.savePool({
+        pool_address: poolAddress,
+        token_id: token.id,
+        platform: platform === 'raydium' ? 'raydium' : 'pumpswap',
+        creation_signature: poolAddress,
+        creation_timestamp: new Date(),
+        metadata: {
+          virtual_sol_reserves: poolInfo.lpReserve?.toString() || '0',
+          virtual_token_reserves: poolInfo.pcReserve?.toString() || '0',
+          real_sol_reserves: poolInfo.lpReserve?.toString() || '0',
+          real_token_reserves: poolInfo.pcReserve?.toString() || '0',
+          bonding_curve_progress: null,
+          status: 'active',
+          latest_price: '0',
+          latest_price_usd: '0',
+        }
+      });
+
+      console.log(`✅ Created graduated pool entry for ${tokenMint} on ${platform}`);
+    } catch (error) {
+      console.error("Error creating graduated pool:", error);
     }
   }
 
@@ -351,7 +509,7 @@ class GraduationMonitor {
     
     const accountStrings = accountKeys;
     
-    if (accountStrings.includes(RAYDIUM_AMM_V4)) {
+    if (accountStrings.includes(RAYDIUM_AMM_V4) || accountStrings.includes(RAYDIUM_CPMM)) {
       return "raydium";
     } else if (accountStrings.includes(PUMP_SWAP_AMM)) {
       return "pumpswap";
@@ -377,7 +535,6 @@ class GraduationMonitor {
       }
 
       // Fallback: check transaction accounts
-      // Typically the token mint is one of the first accounts
       const message = txn.transaction.message;
       let accounts: any[] = [];
       
@@ -403,6 +560,24 @@ class GraduationMonitor {
     }
   }
 
+  private async extractBondingCurveFromTx(txn: VersionedTransactionResponse, parsedIxs: any[]): Promise<string | null> {
+    try {
+      // Look for bonding curve in parsed instructions
+      for (const ix of parsedIxs) {
+        const bondingCurveAccount = ix.accounts?.find((acc: any) => 
+          acc.name === "bondingCurve" || acc.name === "globalAccount"
+        );
+        if (bondingCurveAccount?.pubkey) {
+          return bondingCurveAccount.pubkey.toString();
+        }
+      }
+
+      return null;
+    } catch (error) {
+      return null;
+    }
+  }
+
   private isSystemProgram(address: string): boolean {
     const systemPrograms = [
       "11111111111111111111111111111111",
@@ -412,6 +587,7 @@ class GraduationMonitor {
       PUMP_PROGRAM_ID,
       MIGRATION_ACCOUNT,
       RAYDIUM_AMM_V4,
+      RAYDIUM_CPMM,
       PUMP_SWAP_AMM
     ];
     return systemPrograms.includes(address);

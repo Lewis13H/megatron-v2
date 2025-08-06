@@ -20,7 +20,7 @@ export function bnLayoutFormatter(obj: any) {
   }
 }
 
-export function convertBase64ToBase58(data){
+export function convertBase64ToBase58(data: any){
     const output = base58.encode(Buffer.from(data,'base64'))
     return output;
 }

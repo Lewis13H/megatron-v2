@@ -1,18 +1,18 @@
-export function parseSwapTransactionOutput(parsedInstruction,txn) {
+export function parseSwapTransactionOutput(parsedInstruction: any, txn: any) {
     let price;
     const SOL_MINT = 'So11111111111111111111111111111111111111112';
     const decimal = txn.meta?.preTokenBalances.find(
-        (instruction) => instruction.mint != SOL_MINT     
+        (instruction: any) => instruction.mint != SOL_MINT     
     ).uiTokenAmount?.decimals;
     const swapInstruction = parsedInstruction.instructions.pumpFunIxs.find(
-        (instruction) => instruction.name === 'buy' || instruction.name === 'sell'
+        (instruction: any) => instruction.name === 'buy' || instruction.name === 'sell'
     );
 
     if (!swapInstruction) {
         return;
     }
-    const baseMintPubkey = swapInstruction.accounts.find((account) => account.name === 'base_mint')?.pubkey;
-    const quoteMintPubkey = swapInstruction.accounts.find((account) => account.name === 'quote_mint')?.pubkey;
+    const baseMintPubkey = swapInstruction.accounts.find((account: any) => account.name === 'base_mint')?.pubkey;
+    const quoteMintPubkey = swapInstruction.accounts.find((account: any) => account.name === 'quote_mint')?.pubkey;
 
     const parsedEvent = parsedInstruction.instructions.events[0]?.data;
     const pool_base_token_reserves = parsedEvent.pool_base_token_reserves;

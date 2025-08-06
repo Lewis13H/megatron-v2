@@ -148,7 +148,7 @@ class GraduatedPoolFinder {
   async findRaydiumV4Pool(tokenMint: string): Promise<any | null> {
     try {
       // Get all accounts owned by Raydium AMM V4
-      const accounts = await this.connection.getProgramAccounts(
+      let accounts = [...(await this.connection.getProgramAccounts(
         new PublicKey(this.RAYDIUM_AMM_V4),
         {
           filters: [
@@ -166,7 +166,7 @@ class GraduatedPoolFinder {
             },
           ],
         }
-      );
+      ))];
 
       if (accounts.length === 0) {
         // Try with token as quote mint
@@ -210,7 +210,6 @@ class GraduatedPoolFinder {
         lpMint: poolInfo.lpMint.toString(),
         baseDecimal: poolInfo.baseDecimal,
         quoteDecimal: poolInfo.quoteDecimal,
-        lpSupply: poolInfo.lpSupply.toString(),
         baseVault: poolInfo.baseVault.toString(),
         quoteVault: poolInfo.quoteVault.toString(),
         openTime: poolInfo.poolOpenTime.toNumber() * 1000,
@@ -227,23 +226,17 @@ class GraduatedPoolFinder {
       await monitorService.savePool({
         pool_address: poolData.poolAddress,
         token_id: tokenId,
-        base_mint: poolData.baseMint,
-        quote_mint: poolData.quoteMint,
-        platform: platform,
-        pool_type: 'graduated',
-        lp_mint: poolData.lpMint,
-        base_vault: poolData.baseVault,
-        quote_vault: poolData.quoteVault,
-        virtual_sol_reserves: '0',
-        virtual_token_reserves: '0',
-        real_sol_reserves: '0',
-        real_token_reserves: '0',
-        bonding_curve_progress: null,
-        status: 'active',
-        initial_price: 0,
-        initial_price_usd: 0,
-        latest_price: 0,
-        latest_price_usd: 0,
+        platform: platform as 'pumpfun' | 'raydium' | 'raydium_launchpad' | 'pumpswap',
+        creation_signature: poolData.poolAddress,
+        creation_timestamp: new Date(poolData.openTime || Date.now()),
+        metadata: {
+          base_mint: poolData.baseMint,
+          quote_mint: poolData.quoteMint,
+          lp_mint: poolData.lpMint,
+          base_vault: poolData.baseVault,
+          quote_vault: poolData.quoteVault,
+          status: 'active',
+        }
       });
     } catch (error) {
       console.error("Error saving pool:", error);

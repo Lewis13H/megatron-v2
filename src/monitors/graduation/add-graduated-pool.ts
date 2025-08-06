@@ -57,20 +57,19 @@ async function addGraduatedPool(tokenMint: string, poolAddress: string, platform
     await monitorService.savePool({
       pool_address: poolAddress,
       token_id: token.id,
-      base_mint: tokenMint,
-      quote_mint: "So11111111111111111111111111111111111111112", // SOL
       platform: platform,
-      pool_type: 'graduated',
-      status: 'active',
-      virtual_sol_reserves: '0',
-      virtual_token_reserves: '0',
-      real_sol_reserves: '0',
-      real_token_reserves: '0',
-      bonding_curve_progress: null, // No bonding curve for graduated tokens
-      initial_price: 0,
-      initial_price_usd: 0,
-      latest_price: 0,
-      latest_price_usd: 0,
+      creation_signature: poolAddress,
+      creation_timestamp: new Date(),
+      initial_virtual_sol_reserves: '0',
+      initial_virtual_token_reserves: '0',
+      initial_real_sol_reserves: '0',
+      initial_real_token_reserves: '0',
+      metadata: {
+        initial_price: 0,
+        initial_price_usd: 0,
+        latest_price: 0,
+        latest_price_usd: 0,
+      }
     });
 
     console.log("\n✅ Successfully added graduated pool!");

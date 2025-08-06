@@ -18,7 +18,7 @@ import { bnLayoutFormatter } from "./utils/bn-layout-formatter";
 import { SolanaEventParser } from "./utils/event-parser";
 import pumpFunIdl from "./idls/pump_0.1.0.json";
 import { monitorService } from "../../database";
-import { pumpfunIntegration } from "./enhanced-integration";
+import { pumpfunIntegration } from "../utils/enhanced-integration";
 
 interface SubscribeRequest {
   accounts: { [key: string]: SubscribeRequestFilterAccounts };

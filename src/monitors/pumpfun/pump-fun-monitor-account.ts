@@ -17,7 +17,7 @@ import bs58 from 'bs58';
 // Import utility function
 import { bnLayoutFormatter } from "./utils/bn-layout-formatter";
 import { getDbPool, PoolOperations, PoolData } from "../../database";
-import { pumpfunIntegration } from "./enhanced-integration";
+import { pumpfunIntegration } from "../utils/enhanced-integration";
 
 const PUMP_FUN_PROGRAM_ID = '6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P';
 

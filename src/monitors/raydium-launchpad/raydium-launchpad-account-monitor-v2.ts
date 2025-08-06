@@ -188,7 +188,7 @@ async function processPoolUpdate(accountData: any) {
       ]
     );
 
-    if (updateResult.rowCount > 0) {
+    if (updateResult.rowCount && updateResult.rowCount > 0) {
       console.log(`💾 Pool updated in database: ${accountData.pubKey}`);
       if (currentPrice) {
         console.log(`   Price: ${currentPrice.toExponential(6)} SOL ($${currentPriceUsd?.toFixed(6) || 'N/A'})`);

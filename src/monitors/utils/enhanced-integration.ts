@@ -381,17 +381,17 @@ export const pumpfunIntegration = new PumpfunMonitorIntegration();
 // Example usage in monitors:
 /*
 // In pumpfun-monitor-new-token-mint.ts:
-import { pumpfunIntegration } from './enhanced-integration';
+import { pumpfunIntegration } from '../utils/enhanced-integration';
 // After saving token:
 await pumpfunIntegration.onNewTokenCreated(tokenData);
 
 // In pumpfun-monitor-token-price.ts:
-import { pumpfunIntegration } from './enhanced-integration';
+import { pumpfunIntegration } from '../utils/enhanced-integration';
 // After price update:
 await pumpfunIntegration.onPriceUpdate(formattedSwapTxn);
 
 // In pump-fun-monitor-account.ts:
-import { pumpfunIntegration } from './enhanced-integration';
+import { pumpfunIntegration } from '../utils/enhanced-integration';
 // After account update:
 await pumpfunIntegration.onAccountUpdate(accountData);
 

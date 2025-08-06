@@ -20,11 +20,21 @@ class GraduatedTokenScanner {
   private PUMP_PROGRAM_ID = "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P";
 
   constructor() {
-    // Use a public RPC endpoint or your preferred one
+    // Use Helius RPC endpoint to avoid rate limiting
+    const heliusRpc = process.env.HELIUS_RPC || 
+      (process.env.HELIUS_API_KEY ? 
+        `https://mainnet.helius-rpc.com/?api-key=${process.env.HELIUS_API_KEY}` : 
+        "https://api.mainnet-beta.solana.com");
+    
     this.connection = new Connection(
-      process.env.RPC_URL || "https://api.mainnet-beta.solana.com",
-      "confirmed"
+      heliusRpc,
+      {
+        commitment: "confirmed",
+        confirmTransactionInitialTimeout: 60000
+      }
     );
+    
+    console.log(`🔗 Using RPC: ${heliusRpc.includes('helius') ? 'Helius' : 'Public Solana'}`);
   }
 
   async scanForGraduatedTokens() {
@@ -104,8 +114,8 @@ class GraduatedTokenScanner {
           errorCount++;
         }
 
-        // Rate limiting to avoid RPC throttling
-        await new Promise(resolve => setTimeout(resolve, 100));
+        // Rate limiting to avoid RPC throttling (reduced for Helius)
+        await new Promise(resolve => setTimeout(resolve, 50));
       }
 
       console.log("\n" + "=".repeat(80));
@@ -131,7 +141,23 @@ class GraduatedTokenScanner {
 
       const bondingCurveData = bondingCurveStructure.decode(accountInfo.data);
       return bondingCurveData.complete === true;
-    } catch (error) {
+    } catch (error: any) {
+      // Handle rate limiting specifically
+      if (error.message?.includes('429') || error.message?.includes('Too Many Requests')) {
+        console.error(`⚠️  Rate limited on ${bondingCurveAddress}, waiting...`);
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        // Retry once after delay
+        try {
+          const pubkey = new PublicKey(bondingCurveAddress);
+          const accountInfo = await this.connection.getAccountInfo(pubkey);
+          if (!accountInfo || !accountInfo.data) return false;
+          const bondingCurveData = bondingCurveStructure.decode(accountInfo.data);
+          return bondingCurveData.complete === true;
+        } catch (retryError) {
+          console.error(`Error on retry for ${bondingCurveAddress}:`, retryError);
+          return false;
+        }
+      }
       console.error(`Error checking bonding curve ${bondingCurveAddress}:`, error);
       return false;
     }
@@ -147,7 +173,21 @@ class GraduatedTokenScanner {
       }
 
       return bondingCurveStructure.decode(accountInfo.data);
-    } catch (error) {
+    } catch (error: any) {
+      // Handle rate limiting
+      if (error.message?.includes('429') || error.message?.includes('Too Many Requests')) {
+        console.error(`⚠️  Rate limited, waiting before retry...`);
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        // Retry once
+        try {
+          const pubkey = new PublicKey(bondingCurveAddress);
+          const accountInfo = await this.connection.getAccountInfo(pubkey);
+          if (!accountInfo || !accountInfo.data) return null;
+          return bondingCurveStructure.decode(accountInfo.data);
+        } catch (retryError) {
+          return null;
+        }
+      }
       return null;
     }
   }

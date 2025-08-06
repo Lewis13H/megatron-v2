@@ -19,7 +19,7 @@ import { bnLayoutFormatter } from "./utils/bn-layout-formatter";
 import pumpFunAmmIdl from "./idls/pump_0.1.0.json";
 import { parseSwapTransactionOutput } from "./utils/pumpfun_formatted_txn";
 import { getDbPool } from "../../database";
-import { pumpfunIntegration } from "./enhanced-integration";
+import { pumpfunIntegration } from "../utils/enhanced-integration";
 
 interface SubscribeRequest {
   accounts: { [key: string]: SubscribeRequestFilterAccounts };

@@ -135,7 +135,7 @@ function decodePumpAmmTxn(tx: VersionedTransactionResponse) {
 
   const parsedIxs = PUMP_AMM_IX_PARSER.parseTransactionData(
     tx.transaction.message,
-    tx.meta.loadedAddresses
+    tx.meta!.loadedAddresses
   );
 
   const pumpAmmIxs = parsedIxs.filter((ix) =>
@@ -264,9 +264,6 @@ async function saveGraduatedToken(
         creator_address: creator || 'Unknown', // Add creator_address field
         creation_signature: signature, // Use pool creation signature as token creation signature
         creation_timestamp: new Date(),
-        is_graduated: true,
-        graduation_signature: signature,
-        graduation_timestamp: new Date(),
         metadata: {
           graduated: true,
           graduation_timestamp: new Date().toISOString(),

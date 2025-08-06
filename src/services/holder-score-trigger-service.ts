@@ -134,24 +134,26 @@ export class HolderScoreTriggerService {
         const highestPriority = Math.min(...triggers.map(t => t.priority));
         const trigger = triggers.find(t => t.priority === highestPriority);
 
-        const insertQuery = `
-          INSERT INTO holder_score_queue (token_id, trigger_type, trigger_reason, priority)
-          VALUES ($1, $2, $3, $4)
-          ON CONFLICT (token_id, trigger_type) 
-          DO UPDATE SET 
-            trigger_reason = $3,
-            priority = LEAST(holder_score_queue.priority, $4),
-            created_at = NOW()
-        `;
+        if (trigger) {
+          const insertQuery = `
+            INSERT INTO holder_score_queue (token_id, trigger_type, trigger_reason, priority)
+            VALUES ($1, $2, $3, $4)
+            ON CONFLICT (token_id, trigger_type) 
+            DO UPDATE SET 
+              trigger_reason = $3,
+              priority = LEAST(holder_score_queue.priority, $4),
+              created_at = NOW()
+          `;
 
-        await db.query(insertQuery, [
-          token.id,
-          trigger.type,
-          trigger.reason,
-          trigger.priority
-        ]);
+          await db.query(insertQuery, [
+            token.id,
+            trigger.type,
+            trigger.reason,
+            trigger.priority
+          ]);
 
-        console.log(`📍 Queued ${token.symbol}: ${trigger.reason} (priority ${trigger.priority})`);
+          console.log(`📍 Queued ${token.symbol}: ${trigger.reason} (priority ${trigger.priority})`);
+        }
       }
     } catch (error) {
       console.error(`Error evaluating token ${token.symbol}:`, error);

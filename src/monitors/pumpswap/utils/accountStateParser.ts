@@ -1,13 +1,15 @@
 
 import { BorshAccountsCoder } from "@coral-xyz/anchor";
 import * as fs from 'fs';
+import * as path from 'path';
 import { bnLayoutFormatter, convertBase64ToBase58 } from "./base-encoding";
 
-const program_idl = JSON.parse(fs.readFileSync('./idls/pump_amm_0.1.0.json', "utf8"));
+const idlPath = path.join(__dirname, '..', 'idls', 'pump_amm_0.1.0.json');
+const program_idl = JSON.parse(fs.readFileSync(idlPath, "utf8"));
 
 const coder = new BorshAccountsCoder(program_idl);
 
-export function parsedAccountData(data) {
+export function parsedAccountData(data: any) {
     if (!data || !data.account || !data.account.account) {
         throw new Error("Invalid data format");
     }
