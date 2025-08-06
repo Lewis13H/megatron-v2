@@ -22,30 +22,74 @@ router.get('/debug', async (req, res) => {
   }
 });
 
-// Simple test endpoint
-router.get('/test', async (req, res) => {
-  res.json({ 
-    message: 'API is working',
-    timestamp: new Date()
-  });
-});
-
-// Get top tokens with scores
+// Get top tokens with technical scores
 router.get('/tokens', async (req, res) => {
   try {
-    // First get the latest SOL price
     const pool = getDbPool();
+    
+    // First get the latest SOL price
     const solPriceResult = await pool.query(`
       SELECT price_usd 
       FROM sol_usd_prices 
       ORDER BY price_time DESC 
       LIMIT 1
     `);
-    const solPriceUsd = solPriceResult.rows[0]?.price_usd || 200; // Default to $200 if no price
+    const solPriceUsd = solPriceResult.rows[0]?.price_usd || 165; // More realistic default
 
-    // Query to get real price data from pools table with technical scores and holder scores
+    // Query using the scoring function
     const query = `
-      WITH latest_holder_scores AS (
+      WITH active_tokens AS (
+        -- Get tokens with recent activity
+        SELECT DISTINCT 
+          t.id as token_id,
+          t.mint_address,
+          t.symbol,
+          t.name,
+          t.created_at,
+          t.platform,
+          t.is_graduated,
+          COALESCE(
+            t.metadata->'offChainMetadata'->>'image',
+            t.metadata->>'image',
+            t.metadata->>'imageUri',
+            t.metadata->>'image_uri'
+          ) as image_uri,
+          p.id as pool_id,
+          p.pool_address,
+          p.latest_price_usd,
+          p.latest_price,
+          p.initial_price_usd,
+          p.initial_price,
+          p.bonding_curve_progress
+        FROM tokens t
+        JOIN pools p ON t.id = p.token_id
+        WHERE t.created_at > NOW() - INTERVAL '30 days'
+          AND t.symbol IS NOT NULL
+          AND p.status = 'active'
+          AND EXISTS (
+            SELECT 1 FROM transactions tx
+            WHERE tx.pool_id = p.id
+            AND tx.block_time > NOW() - INTERVAL '24 hours'
+          )
+        ORDER BY p.latest_price_usd DESC NULLS LAST
+        LIMIT 50
+      ),
+      tokens_with_scores AS (
+        SELECT 
+          at.*,
+          -- Calculate technical scores in real-time
+          ts.total_score as technical_score,
+          ts.market_cap_score,
+          ts.bonding_curve_score,
+          ts.trading_health_score,
+          ts.selloff_response_score,
+          ts.market_cap_usd,
+          ts.buy_sell_ratio,
+          ts.is_selloff_active
+        FROM active_tokens at
+        CROSS JOIN LATERAL calculate_technical_score(at.token_id, at.pool_id) ts
+      ),
+      latest_holder_scores AS (
         SELECT DISTINCT ON (token_id)
           token_id,
           total_score,
@@ -60,50 +104,26 @@ router.get('/tokens', async (req, res) => {
           organic_growth_score,
           is_frozen
         FROM holder_scores
-        ORDER BY token_id, is_frozen DESC, score_time DESC  -- Prefer frozen scores
-      ),
-      latest_pools AS (
-        SELECT DISTINCT ON (token_id)
-          token_id,
-          pool_address,
-          platform,
-          latest_price_usd,
-          latest_price,
-          initial_price_usd,
-          initial_price,
-          bonding_curve_progress
-        FROM pools
-        ORDER BY token_id, 
-          CASE 
-            WHEN platform = 'pumpswap' THEN 1  -- Prefer PumpSwap pools (post-graduation)
-            WHEN platform = 'raydium' THEN 2   -- Then Raydium
-            WHEN platform = 'pumpfun' THEN 3   -- Then PumpFun
-            ELSE 4
-          END,
-          created_at DESC  -- Most recent pool within platform priority
+        ORDER BY token_id, is_frozen DESC, score_time DESC
       )
       SELECT 
-        t.mint_address as address,
-        t.symbol,
-        t.name,
-        COALESCE(
-          t.metadata->'offChainMetadata'->>'image',
-          t.metadata->>'image',
-          t.metadata->>'imageUri',
-          t.metadata->>'image_uri'
-        ) as image_uri,
-        t.created_at as token_created_at,
-        t.platform,
-        COALESCE(lp.latest_price_usd, lp.initial_price_usd, 0) as price_usd,
-        COALESCE(lp.latest_price, lp.initial_price, 0) as price_sol,
-        COALESCE(lts.total_score, 0) + COALESCE(lhs.total_score, 0) as total_score,
-        COALESCE(lts.total_score, 0) as technical_score,
-        COALESCE(lts.market_cap_score, 0) as market_cap_score,
-        COALESCE(lts.bonding_curve_score, 0) as bonding_curve_score,
-        COALESCE(lts.trading_health_score, 0) as trading_health_score,
-        COALESCE(lts.selloff_response_score, 0) as selloff_response_score,
-        COALESCE(lts.buy_sell_ratio, 0) as buy_sell_ratio,
-        lts.is_selloff_active,
+        tws.mint_address as address,
+        tws.symbol,
+        tws.name,
+        tws.image_uri,
+        tws.created_at as token_created_at,
+        tws.platform,
+        COALESCE(tws.latest_price_usd, tws.initial_price_usd, 0) as price_usd,
+        COALESCE(tws.latest_price, tws.initial_price, 0) as price_sol,
+        -- Scoring
+        COALESCE(tws.technical_score, 0) + COALESCE(lhs.total_score, 0) as total_score,
+        COALESCE(tws.technical_score, 0) as technical_score,
+        COALESCE(tws.market_cap_score, 0) as market_cap_score,
+        COALESCE(tws.bonding_curve_score, 0) as bonding_curve_score,
+        COALESCE(tws.trading_health_score, 0) as trading_health_score,
+        COALESCE(tws.selloff_response_score, 0) as selloff_response_score,
+        COALESCE(tws.buy_sell_ratio, 0) as buy_sell_ratio,
+        tws.is_selloff_active,
         COALESCE(lhs.total_score, 0) as holder_score,
         COALESCE(lhs.distribution_score, 0) as holder_distribution_score,
         COALESCE(lhs.quality_score, 0) as holder_quality_score,
@@ -115,28 +135,19 @@ router.get('/tokens', async (req, res) => {
         lhs.bot_ratio,
         lhs.organic_growth_score,
         0 as social_score,
-        (SELECT COUNT(*) FROM transactions WHERE token_id = t.id AND block_time > NOW() - INTERVAL '24 hours') as txns_24h,
-        COALESCE(lhs.unique_holders, (SELECT COUNT(DISTINCT wallet_address) FROM token_holders WHERE token_id = t.id), 0) as holder_count,
+        (SELECT COUNT(*) FROM transactions WHERE token_id = tws.token_id AND block_time > NOW() - INTERVAL '24 hours') as txns_24h,
+        COALESCE(lhs.unique_holders, 0) as holder_count,
         0 as makers_24h,
-        EXTRACT(epoch FROM (NOW() - t.created_at)) as age_seconds,
-        (SELECT COALESCE(SUM(sol_amount), 0) FROM transactions WHERE token_id = t.id AND block_time > NOW() - INTERVAL '24 hours' AND type IN ('buy', 'sell')) as volume_24h_sol,
-        0 as reserves_sol,
-        0 as liquidity_usd,
-        lp.bonding_curve_progress as bonding_curve_progress,
-        t.is_graduated as is_graduated
-      FROM tokens t
-      LEFT JOIN latest_pools lp ON t.id = lp.token_id
-      LEFT JOIN latest_technical_scores lts ON t.id = lts.token_id
-      LEFT JOIN latest_holder_scores lhs ON t.id = lhs.token_id
-      WHERE t.created_at > NOW() - INTERVAL '30 days'
-        AND t.symbol IS NOT NULL
+        EXTRACT(epoch FROM (NOW() - tws.created_at)) as age_seconds,
+        (SELECT COALESCE(SUM(sol_amount), 0) FROM transactions WHERE token_id = tws.token_id AND block_time > NOW() - INTERVAL '24 hours' AND type IN ('buy', 'sell')) as volume_24h_sol,
+        tws.bonding_curve_progress,
+        tws.is_graduated,
+        tws.market_cap_usd
+      FROM tokens_with_scores tws
+      LEFT JOIN latest_holder_scores lhs ON tws.token_id = lhs.token_id
       ORDER BY 
-        CASE 
-          WHEN (COALESCE(lts.total_score, 0) + COALESCE(lhs.total_score, 0)) > 0 
-          THEN (COALESCE(lts.total_score, 0) + COALESCE(lhs.total_score, 0))
-          ELSE -1 
-        END DESC,
-        t.created_at DESC
+        COALESCE(tws.technical_score, 0) + COALESCE(lhs.total_score, 0) DESC,
+        tws.created_at DESC
     `;
 
     const result = await pool.query(query);
@@ -145,6 +156,7 @@ router.get('/tokens', async (req, res) => {
     const tokens = result.rows.map((row: any, index: number) => {
       const priceSol = parseFloat(row.price_sol) || 0;
       const priceUsd = parseFloat(row.price_usd) || (priceSol * parseFloat(solPriceUsd));
+      const marketCapUsd = parseFloat(row.market_cap_usd) || (priceUsd * 1_000_000_000);
       
       return {
         rank: index + 1,
@@ -157,7 +169,7 @@ router.get('/tokens', async (req, res) => {
           sol: priceSol
         },
         marketCap: {
-          usd: priceUsd * 1_000_000_000, // 1B supply
+          usd: marketCapUsd,
           sol: priceSol * 1_000_000_000
         },
         scores: {
@@ -196,20 +208,24 @@ router.get('/tokens', async (req, res) => {
           usd: 0,
           sol: 0
         },
-        bondingCurveProgress: row.bonding_curve_progress !== null && row.bonding_curve_progress !== undefined ? parseFloat(row.bonding_curve_progress) : null,
-        platform: row.platform || 'unknown',
-        isGraduated: row.is_graduated || false
+        bondingCurveProgress: row.bonding_curve_progress !== null ? parseFloat(row.bonding_curve_progress) : null,
+        isGraduated: row.is_graduated || false,
+        platform: row.platform
       };
     });
 
-    res.json({ tokens, timestamp: new Date() });
+    res.json({
+      success: true,
+      tokens: tokens,
+      timestamp: new Date(),
+      solPrice: parseFloat(solPriceUsd)
+    });
+
   } catch (error) {
     console.error('Error fetching tokens:', error);
-    console.error('Error details:', error instanceof Error ? error.stack : 'Unknown error');
-    res.status(500).json({ 
-      error: 'Failed to fetch tokens',
-      details: error instanceof Error ? error.message : 'Unknown error',
-      stack: process.env.NODE_ENV !== 'production' ? (error instanceof Error ? error.stack : undefined) : undefined
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
     });
   }
 });
@@ -217,43 +233,97 @@ router.get('/tokens', async (req, res) => {
 // Get SOL price
 router.get('/sol-price', async (req, res) => {
   try {
-    const query = `
-      SELECT price_usd, created_at
-      FROM sol_usd_prices
-      ORDER BY created_at DESC
-      LIMIT 1
-    `;
-    
     const pool = getDbPool();
-    const result = await pool.query(query);
+    const result = await pool.query(`
+      SELECT price_usd, price_time 
+      FROM sol_usd_prices 
+      ORDER BY price_time DESC 
+      LIMIT 1
+    `);
     
     if (result.rows.length > 0) {
-      const row = result.rows[0];
       res.json({
-        price: row.price_usd,
-        updatedAt: row.created_at,
-        secondsAgo: Math.floor((Date.now() - new Date(row.created_at).getTime()) / 1000)
+        success: true,
+        price: parseFloat(result.rows[0].price_usd),
+        timestamp: result.rows[0].price_time
       });
     } else {
-      res.json({ price: 200.00, updatedAt: new Date(), secondsAgo: 0 });
+      // If no price in database, return a default
+      res.json({
+        success: true,
+        price: 165, // More realistic default
+        timestamp: new Date(),
+        source: 'default'
+      });
     }
   } catch (error) {
     console.error('Error fetching SOL price:', error);
-    res.status(500).json({ error: 'Failed to fetch SOL price' });
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// Get market sentiment summary
+router.get('/sentiment', async (req, res) => {
+  try {
+    const pool = getDbPool();
+    const result = await pool.query(`
+      WITH active_scores AS (
+        SELECT 
+          t.id as token_id,
+          p.id as pool_id,
+          ts.total_score,
+          ts.is_selloff_active
+        FROM tokens t
+        JOIN pools p ON t.id = p.token_id
+        CROSS JOIN LATERAL calculate_technical_score(t.id, p.id) ts
+        WHERE p.status = 'active'
+        AND EXISTS (
+          SELECT 1 FROM transactions tx
+          WHERE tx.pool_id = p.id
+          AND tx.block_time > NOW() - INTERVAL '1 hour'
+        )
+        LIMIT 100
+      )
+      SELECT 
+        COUNT(CASE WHEN total_score > 200 THEN 1 END) as bullish,
+        COUNT(CASE WHEN total_score < 100 THEN 1 END) as bearish,
+        COUNT(CASE WHEN total_score BETWEEN 100 AND 200 THEN 1 END) as neutral,
+        COUNT(CASE WHEN is_selloff_active THEN 1 END) as active_selloffs,
+        AVG(total_score) as avg_score,
+        MAX(total_score) as max_score,
+        MIN(total_score) as min_score
+      FROM active_scores
+    `);
+    
+    res.json({
+      success: true,
+      sentiment: result.rows[0],
+      timestamp: new Date()
+    });
+  } catch (error) {
+    console.error('Error fetching sentiment:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
   }
 });
 
 // Helper function to format age
-function formatAge(seconds: number | string | null): string {
-  if (!seconds) return '0s';
-  const sec = typeof seconds === 'string' ? parseFloat(seconds) : seconds;
-  if (isNaN(sec)) return '0s';
+function formatAge(seconds: number): string {
+  if (!seconds) return 'New';
   
-  if (sec < 60) return `${Math.floor(sec)}s`;
-  if (sec < 3600) return `${Math.floor(sec / 60)}m`;
-  if (sec < 86400) return `${Math.floor(sec / 3600)}h`;
-  if (sec < 2592000) return `${Math.floor(sec / 86400)}d`;
-  return `${Math.floor(sec / 2592000)}mo`;
+  const hours = Math.floor(seconds / 3600);
+  const days = Math.floor(hours / 24);
+  
+  if (days > 0) return `${days}d`;
+  if (hours > 0) return `${hours}h`;
+  
+  const minutes = Math.floor(seconds / 60);
+  return `${minutes}m`;
 }
 
 export default router;

@@ -13,7 +13,7 @@ async function runTechnicalScoringMigration() {
   
   try {
     // Read the migration SQL
-    const migrationPath = path.join(__dirname, '..', 'migrations', '015_create_technical_scoring_system.sql');
+    const migrationPath = path.join(__dirname, '..', 'migrations', '015_technical_scoring_system.sql');
     const migrationSQL = fs.readFileSync(migrationPath, 'utf8');
     
     console.log('📝 Creating technical scoring tables and functions...');

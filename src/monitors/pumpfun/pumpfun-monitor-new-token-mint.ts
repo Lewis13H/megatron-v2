@@ -18,7 +18,7 @@ import { bnLayoutFormatter } from "./utils/bn-layout-formatter";
 import { SolanaEventParser } from "./utils/event-parser";
 import pumpFunIdl from "./idls/pump_0.1.0.json";
 import { monitorService } from "../../database";
-import { pumpfunIntegration } from "../utils/enhanced-integration";
+// import { pumpfunIntegration } from "../utils/enhanced-integration"; // Removed during cleanup
 
 interface SubscribeRequest {
   accounts: { [key: string]: SubscribeRequestFilterAccounts };
@@ -335,9 +335,9 @@ async function handleStream(client: Client, args: SubscribeRequest) {
         
         console.log(`💾 New token and pool saved to database with metadata`);
         
-        // Calculate initial technical score after a delay
-        await pumpfunIntegration.onNewTokenCreated(saveData);
-        console.log(`📊 Technical score calculation scheduled`);
+        // Technical score calculation removed - scores are calculated on-demand in dashboard
+        // await pumpfunIntegration.onNewTokenCreated(saveData);
+        // console.log(`📊 Technical score calculation scheduled`);
       } catch (error) {
         console.error(`❌ Failed to save token:`, error);
       }

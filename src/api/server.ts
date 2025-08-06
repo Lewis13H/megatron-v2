@@ -1,7 +1,6 @@
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
-import { fileURLToPath } from 'url';
 import dashboardApi from './dashboard-api';
 
 const app = express();
@@ -19,14 +18,18 @@ console.log('Serving dashboard from:', dashboardPath);
 // Serve static dashboard files
 app.use(express.static(dashboardPath));
 
-// API routes
+// API routes with technical scoring
 app.use('/api', dashboardApi);
 
 // Health check
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date() });
+  res.json({ 
+    status: 'ok', 
+    version: 'v2',
+    scoring: 'calculate_technical_score',
+    timestamp: new Date() 
+  });
 });
-
 
 // Error handling middleware
 app.use((err: any, req: any, res: any, next: any) => {
@@ -36,8 +39,9 @@ app.use((err: any, req: any, res: any, next: any) => {
 
 // Start server
 const server = app.listen(PORT, () => {
-  console.log(`Dashboard API server running on http://localhost:${PORT}`);
-  console.log(`Dashboard UI available at http://localhost:${PORT}`);
+  console.log(`🚀 Dashboard API server running on http://localhost:${PORT}`);
+  console.log(`📊 Dashboard UI with technical scoring available at http://localhost:${PORT}`);
+  console.log(`✨ Features: Real-time sell-off detection, scoring range (-60 to +75 SR)`);
 });
 
 // Handle graceful shutdown
@@ -48,9 +52,3 @@ process.on('SIGINT', () => {
     process.exit(0);
   });
 });
-
-process.on('unhandledRejection', (reason, promise) => {
-  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
-});
-
-export default app;

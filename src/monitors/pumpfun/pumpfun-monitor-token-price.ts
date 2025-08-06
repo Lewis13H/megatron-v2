@@ -19,7 +19,7 @@ import { bnLayoutFormatter } from "./utils/bn-layout-formatter";
 import pumpFunAmmIdl from "./idls/pump_0.1.0.json";
 import { parseSwapTransactionOutput } from "./utils/pumpfun_formatted_txn";
 import { getDbPool } from "../../database";
-import { pumpfunIntegration } from "../utils/enhanced-integration";
+// import { pumpfunIntegration } from "../utils/enhanced-integration"; // Removed during cleanup
 
 interface SubscribeRequest {
   accounts: { [key: string]: SubscribeRequestFilterAccounts };
@@ -146,7 +146,8 @@ async function handleStream(client: Client, args: SubscribeRequest) {
         console.log("💾 Price update saved to database");
         
         // Update technical score based on price change
-        await pumpfunIntegration.onPriceUpdate(formattedSwapTxn);
+        // Technical scores are calculated on-demand in dashboard
+        // await pumpfunIntegration.onPriceUpdate(formattedSwapTxn);
       } catch (error) {
         console.error("❌ Failed to save price update:", error);
       }

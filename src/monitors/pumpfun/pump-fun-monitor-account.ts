@@ -17,7 +17,7 @@ import bs58 from 'bs58';
 // Import utility function
 import { bnLayoutFormatter } from "./utils/bn-layout-formatter";
 import { getDbPool, PoolOperations, PoolData } from "../../database";
-import { pumpfunIntegration } from "../utils/enhanced-integration";
+// import { pumpfunIntegration } from "../utils/enhanced-integration"; // Removed during cleanup
 
 const PUMP_FUN_PROGRAM_ID = '6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P';
 
@@ -348,10 +348,10 @@ export class PumpFunAccountMonitor {
       price: price
     };
     
-    // Run async without awaiting to avoid blocking
-    pumpfunIntegration.onAccountUpdate(accountData).catch(error => {
-      console.error('Error updating technical score:', error);
-    });
+    // Technical scores are calculated on-demand in dashboard
+    // pumpfunIntegration.onAccountUpdate(accountData).catch(error => {
+    //   console.error('Error updating technical score:', error);
+    // });
   }
   
   private async updatePoolInDatabase(bondingCurveAddress: string, data: {
