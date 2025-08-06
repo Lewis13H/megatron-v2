@@ -116,6 +116,7 @@ async function handleStream(client: Client, args: SubscribeRequest) {
       // Save to database
       try {
         // Update pool reserves in database
+        // For Pump.fun, the bonding curve address IS the pool address
         const updateQuery = `
           UPDATE pools 
           SET 
@@ -126,8 +127,9 @@ async function handleStream(client: Client, args: SubscribeRequest) {
             latest_price = $5,
             latest_price_usd = $6,
             bonding_curve_progress = $7,
+            bonding_curve_address = $8,
             updated_at = NOW()
-          WHERE bonding_curve_address = $8
+          WHERE pool_address = $8
         `;
         
         await dbPool.query(updateQuery, [

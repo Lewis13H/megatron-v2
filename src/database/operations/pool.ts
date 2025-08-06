@@ -180,12 +180,18 @@ export class PoolOperations extends BaseOperations {
       return;
     }
     
+    // Also update bonding_curve_address field if not already set
+    updateFields.push(`bonding_curve_address = $${paramCount}`);
+    values.push(bondingCurveAddress);
+    paramCount++;
+    
     values.push(bondingCurveAddress);
     
+    // For Pump.fun, the bonding curve address IS the pool address
     const query = `
       UPDATE pools 
       SET ${updateFields.join(', ')}, updated_at = NOW()
-      WHERE bonding_curve_address = $${paramCount}
+      WHERE pool_address = $${paramCount}
     `;
     
     await this.execute(query, values);
@@ -231,8 +237,9 @@ export class PoolOperations extends BaseOperations {
    * Update pool status (e.g., when graduated)
    */
   async updatePoolStatus(bondingCurveAddress: string, status: 'active' | 'graduated' | 'closed' | 'failed'): Promise<void> {
+    // For Pump.fun, the bonding curve address IS the pool address
     await this.execute(
-      'UPDATE pools SET status = $1, updated_at = NOW() WHERE bonding_curve_address = $2',
+      'UPDATE pools SET status = $1, updated_at = NOW() WHERE pool_address = $2',
       [status, bondingCurveAddress]
     );
   }
