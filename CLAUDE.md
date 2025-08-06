@@ -6,23 +6,39 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Megatron V2 is a sophisticated Solana memecoin trading system that monitors token launches on Pump.fun and Raydium platforms. The system uses gRPC streaming (via Yellowstone/Shyft) to detect new tokens, analyze trading patterns, and identify high-probability opportunities.
 
-The goal is to analyze 100,000+ tokens weekly, identifying trades with 300%+ return potential while minimizing exposure to rug pulls through ML-driven predictions and a comprehensive 999-point scoring system.
+**Core Goal**: Analyze 100,000+ tokens weekly, identifying trades with 300%+ return potential while minimizing exposure to rug pulls through ML-driven predictions and a comprehensive 999-point scoring system.
 
 ## Development Commands
 
-### Technical Scoring System
+### Building & Type Checking
 ```bash
-# Monitor technical scores in real-time
-npm run score:monitor
+# Build TypeScript files
+npm run build
 
-# Run database migration for technical scoring
-npx tsx src/database/setup/run-technical-scoring-migration.ts
+# Type checking (use TypeScript compiler directly)
+npx tsc --noEmit
 
-# Fix technical scoring functions (if needed)
-npx tsx src/database/setup/fix-technical-scoring-functions.ts
+# Note: ESLint not configured - consider adding for linting
 ```
 
-### Running Monitors
+### Monitor Commands
+
+#### Pump.fun Monitors
+```bash
+# Monitor new token mints on Pump.fun
+npm run pfmonitor:mint
+
+# Monitor Pump.fun account updates (bonding curve state)
+npm run pfmonitor:account
+
+# Monitor Pump.fun transactions (all trade activity)
+npm run pfmonitor:transaction
+
+# Monitor Pump.fun token prices (real-time price updates)
+npm run pfmonitor:price
+```
+
+#### Raydium Launchpad Monitors
 ```bash
 # Monitor new token mints on Raydium Launchpad
 npm run rlmonitor:mint
@@ -30,44 +46,69 @@ npm run rlmonitor:mint
 # Monitor all transactions on Raydium Launchpad
 npm run rlmonitor:trans
 
-# Monitor account updates on Raydium Launchpad
+# Monitor account updates on Raydium Launchpad (v1/v2/v3 available)
 npm run rlmonitor:account
+npm run rlmonitor:account:v2
+npm run rlmonitor:account:v3
+```
 
-# Monitor new token mints on Pump.fun
-npm run pfmonitor:mint
+#### PumpSwap Monitors (Alternative AMM)
+```bash
+# Monitor new pools on PumpSwap
+npm run pumpswap:pool
 
-# Monitor Pump.fun account updates
-npm run pfmonitor:account
+# Monitor PumpSwap account updates
+npm run pumpswap:account
 
-# Monitor Pump.fun transactions
-npm run pfmonitor:transaction
+# Monitor PumpSwap transactions
+npm run pumpswap:transaction
 
-# Monitor Pump.fun token prices (real-time price updates)
-npm run pfmonitor:price
+# Monitor PumpSwap prices
+npm run pumpswap:price
+```
 
-# Monitor token graduations
+#### Graduation & Scoring Monitors
+```bash
+# Monitor token graduations (Pump.fun → Raydium migrations)
 npm run graduation:monitor
 
-# Build TypeScript files
-npm run build
+# Scan for graduated tokens
+npm run graduation:scan
 
-# Type checking (use TypeScript compiler directly)
-npx tsc --noEmit
+# Find graduated pools
+npm run graduation:find-pools
 
-# Linting (ESLint not configured - consider adding)
-# npm run lint
+# Add graduated pool manually
+npm run graduation:add-pool
+
+# Monitor technical scores in real-time
+npm run score:monitor
+
+# Monitor holder scores
+npm run holder:monitor
+
+# Smart holder score monitoring (optimized)
+npm run holder:smart
 ```
 
 ### Database Commands
 ```bash
-# Initialize database with all tables
+# Initialize database with all tables and functions
 npx ts-node src/database/setup/setup-database.ts
 
 # Set up individual components
 npx ts-node src/database/setup/02-setup-pools.ts
 npx ts-node src/database/setup/03-setup-transactions.ts
 
-# Truncate all data (use with caution)
+# Run technical scoring migration
+npm run score:migrate
+# Or directly:
+npx tsx src/database/setup/run-technical-scoring-migration.ts
+
+# Fix technical scoring functions (if needed)
+npx tsx src/database/setup/fix-technical-scoring-functions.ts
+
+# WARNING: Truncate all data (use with extreme caution)
 npm run db:truncate
 ```
 
@@ -78,6 +119,8 @@ npm run dashboard:serve
 
 # Start dashboard with auto-reload (development)
 npm run dashboard:serve:dev
+
+# Access dashboard at: http://localhost:3001
 ```
 
 ### SOL Price Service Commands
@@ -92,266 +135,292 @@ npm run sol-price:migrate
 ### Environment Setup
 Create a `.env` file with:
 ```
+# gRPC Configuration (Required)
 GRPC_URL=your_grpc_endpoint_url
 X_TOKEN=your_auth_token
 
-# Database configuration
+# Database Configuration (Required)
 DB_HOST=localhost
 DB_PORT=5432
-DB_NAME=your_database_name
-DB_USER=your_database_user
+DB_NAME=megatron_v2
+DB_USER=postgres
 DB_PASSWORD=your_database_password
+
+# Optional: API Keys for enhanced features
+HELIUS_API_KEY=your_helius_api_key
+PINATA_API_KEY=your_pinata_api_key
+PINATA_SECRET_KEY=your_pinata_secret_key
 ```
 
 ## Architecture Overview
 
 ### Core Monitoring System
-The main application logic is in `src/monitors/` with separate monitors for different platforms:
-- **Raydium Launchpad**: Monitors new token launches, pool creation, and trading activity
-- **Pump.fun**: Comprehensive monitoring suite with 4 specialized monitors:
-  - **Token Mint Monitor**: Captures new token launches with metadata
-  - **Price Monitor**: Real-time price updates on every buy/sell transaction
-  - **Account Monitor**: Tracks bonding curve state and reserves
-  - **Transaction Monitor**: Records all transaction types for analysis
-- **Graduation**: Tracks token migrations from Pump.fun to other platforms
+The monitoring system (`src/monitors/`) implements real-time blockchain data streaming:
 
-### Key Components
-1. **gRPC Streaming**: Uses `@triton-one/yellowstone-grpc` for real-time Solana data
-2. **Transaction Parsing**: Uses `@shyft-to/solana-transaction-parser` with program IDLs
-3. **Event Processing**: Custom formatters and parsers in `utils/` directories
-4. **Database Layer**: PostgreSQL with TimescaleDB for time-series data
+#### Platform-Specific Monitors
+1. **Pump.fun Suite** (4 specialized monitors):
+   - **Token Mint Monitor**: Captures new launches with metadata via IPFS
+   - **Price Monitor**: Real-time price updates on every buy/sell
+   - **Account Monitor**: Tracks bonding curve state and reserves
+   - **Transaction Monitor**: Complete trade history for analysis
+
+2. **Raydium Launchpad**:
+   - Monitors new token launches and pool creation
+   - Tracks trading activity and liquidity changes
+   - Multiple versions (v1/v2/v3) for different implementation stages
+
+3. **Graduation System**:
+   - Tracks token migrations from Pump.fun to Raydium
+   - Identifies successful graduations at 84 SOL threshold
+   - Records migration platform and timing
+
+### Key Technical Components
+
+#### gRPC Streaming Infrastructure
+```typescript
+// Uses @triton-one/yellowstone-grpc for real-time Solana data
+// Subscription filters for specific programs
+// Automatic reconnection logic (to be implemented)
+```
+
+#### Transaction Parsing
+```typescript
+// @shyft-to/solana-transaction-parser with program IDLs
+// Custom parsers in utils/ directories
+// Event extraction and formatting
+```
+
+#### Database Layer (PostgreSQL + TimescaleDB)
+```typescript
+// Unified MonitorService for all operations
+// Connection pooling with automatic retry
+// Transaction batching (50 per batch)
+// 5-minute in-memory cache
+```
 
 ### Program IDs
-- Raydium Launchpad: `LanMV9sAd7wArD4vJFi2qDdfnVhFxYSUg6eADduJ3uj`
-- Pump.fun: `6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P`
+- **Pump.fun**: `6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P`
+- **Raydium Launchpad**: `LanMV9sAd7wArD4vJFi2qDdfnVhFxYSUg6eADduJ3uj`
+- **PumpSwap AMM**: Check `src/monitors/pumpswap/idls/pump_amm_0.1.0.json`
 
-## Code Patterns
+## Database Schema & Integration
 
-### Monitor Structure
-Each monitor follows this pattern:
-1. Set up gRPC client and subscription filters
-2. Parse transactions/accounts using IDL
-3. Extract relevant events (pool creation, buys, sells)
-4. Format and output data
-5. Save to database via monitor-integration module
-
-### Error Handling
-- Suppress known parser warnings for unrecognized programs
-- Handle gRPC reconnection (to be implemented)
-- Validate account data before processing
-
-### Data Processing Flow
-1. Stream data via gRPC subscription
-2. Parse using Anchor IDLs and custom parsers
-3. Format using utility functions
-4. Calculate key metrics:
-   - Bonding curve progress: `((1,073,000,000 × 10^6 - virtualTokenReserves) × 100) / (793,100,000 × 10^6)`
-   - Price: `(virtualSolReserves / 1e9) / (virtualTokenReserves / 1e6)`
-   - Market cap: `1,000,000,000 × price` (1 billion token supply)
-5. Save to database with calculated values
-6. Output structured data for analysis
-
-## Database Schema
-
-### Core Tables
+### Core Tables (TimescaleDB Hypertables)
 - **tokens**: Token metadata and creation info
 - **pools**: Liquidity pool data with virtual reserves
-- **transactions**: Time-series transaction data (hypertable)
-- **price_candles_1m**: Minute-level price aggregates (hypertable)
-- **price_candles_1m_cagg**: Continuous aggregate for efficient price queries
-- **technical_scores**: Time-series technical scoring data (hypertable)
-- **latest_technical_scores**: View showing current scores per token
+- **transactions**: Time-series transaction data
+- **price_candles_1m**: Minute-level price aggregates
+- **technical_scores**: Time-series technical scoring data
+- **holder_scores**: Wallet-based holder scoring
+- **graduated_tokens**: Token graduation tracking
 
-### Database Integration (Updated January 2025)
-The database layer has been consolidated into a unified MonitorService:
-
+### Database Service Usage
 ```typescript
 import { monitorService } from '../../database';
 
-// Save token
+// Save token with metadata
 const tokenId = await monitorService.saveToken({
   mint_address: '...',
   symbol: '...',
+  name: '...',
+  uri: '...',
+  image_url: '...',  // Fetched from IPFS via Pinata
   // ... other fields
 });
 
-// Save pool
+// Save pool with calculations
 const poolId = await monitorService.savePool({
   pool_address: '...',
   token_id: tokenId,
+  virtual_sol_reserves: '...',
+  virtual_token_reserves: '...',
+  latest_price: calculatedPrice,
+  bonding_curve_progress: progress,
   // ... other fields
 });
 
-// Save transactions (with batching)
+// Batch save transactions (automatic batching at 50)
 await monitorService.saveTransactionBatch(transactions);
 
-// Save holder scores
-await monitorService.saveHolderScore(tokenMint, score);
+// Technical score operations
+await monitorService.saveTechnicalScore(tokenMint, scoreData);
+const latestScore = await monitorService.getLatestTechnicalScore(tokenMint);
 
-// Get latest holder score
-const score = await monitorService.getLatestHolderScore(tokenMint);
+// Holder score operations
+await monitorService.saveHolderScore(tokenMint, score);
+const holderScore = await monitorService.getLatestHolderScore(tokenMint);
 ```
 
-#### Database Architecture
+### Database Architecture
 ```
 src/database/
-├── monitor-service.ts    # Unified service for all operations
+├── monitor-service.ts    # Singleton service for all operations
 ├── connection.ts         # Connection pool with retry logic
-├── base-operations.ts    # Base class for operations
+├── base-operations.ts    # Base class for DB operations
 ├── cache.ts             # In-memory cache (5min TTL)
 ├── types.ts             # All TypeScript interfaces
 └── operations/          # Individual operation classes
-    ├── token.ts
-    ├── pool.ts
-    ├── transaction.ts   # Supports batch operations
-    └── price.ts
+    ├── token.ts         # Token CRUD operations
+    ├── pool.ts          # Pool management
+    ├── transaction.ts   # Transaction batching
+    └── price.ts         # Price aggregation
 ```
 
-**Key Features:**
-- Singleton MonitorService for all database operations
-- Connection pooling with automatic retry
-- Transaction batching (50 per batch)
-- Simple in-memory caching
-- Unified error handling
+## Scoring System (999 Points Total)
 
-### Pump.fun Bonding Curve Mechanics
-- **Initial Virtual Token Reserves**: 1,073,000,000 tokens (1.073 billion)
-- **Total Sellable Tokens**: 793,100,000 tokens (793.1 million)
-- **Reserved for Migration**: 206,900,000 tokens (206.9 million)
-- **Graduation Threshold**: 84 SOL collected in bonding curve
-- **Progress Calculation**: Based on tokens sold from virtual reserves
+### 1. Technical Score (333 Points) - COMPLETED
+Evaluates real-time market dynamics:
 
-### Technical Scoring System (333 Points)
-The Technical Score evaluates tokens based on real-time market dynamics:
+- **Market Cap & Entry Optimization** (100 points)
+  - Optimal range: $15-30k market cap
+  - Velocity tracking for growth momentum
+  
+- **Bonding Curve Dynamics** (83 points)
+  - Progress velocity: 0.5-2% per hour optimal
+  - Sweet spot: 5-20% overall progress
+  
+- **Trading Health Metrics** (75 points)
+  - Buy/sell ratio analysis
+  - Volume trend comparison (5min vs 30min)
+  - Whale concentration penalties
+  
+- **Sell-off Detection & Response** (75 points)
+  - Real-time price drop monitoring
+  - Dynamic penalty system (-40 to 40 points)
+  - Recovery strength measurement
 
-1. **Market Cap & Entry Optimization (100 points)**
-   - Heavily favors $15-30k market cap range (optimal entry)
-   - Tracks velocity of market cap growth
+### 2. Holder Score (333 Points) - IN PROGRESS
+Analyzes wallet behavior and distribution
 
-2. **Bonding Curve Dynamics (83 points)**
-   - Progress velocity tracking (optimal: 0.5-2% per hour)
-   - Consistency and position scoring
-   - Sweet spot: 5-20% progress
+### 3. Social Score (333 Points) - PLANNED
+TweetScout API integration for social metrics
 
-3. **Trading Health Metrics (75 points)**
-   - Buy/sell ratio analysis
-   - Volume trend comparison (5min vs 30min)
-   - Whale concentration penalties
+## Important Calculations
 
-4. **Sell-off Detection & Response (75 points)**
-   - Real-time price drop monitoring
-   - Dynamic penalties (-40 to 40 points)
-   - Recovery strength measurement
-
-**Integration**: Scores update automatically via monitor integration with 5-second caching and debouncing for performance.
-
-## Important Implementation Details
-
-### Key Calculations
-
-#### Bonding Curve Progress
+### Pump.fun Bonding Curve
 ```typescript
-const INITIAL_VIRTUAL_TOKEN_RESERVES = 1_073_000_000 * 1e6;
-const TOTAL_SELLABLE_TOKENS = 793_100_000 * 1e6;
+// Constants
+const INITIAL_VIRTUAL_TOKEN_RESERVES = 1_073_000_000 * 1e6;  // 1.073B
+const TOTAL_SELLABLE_TOKENS = 793_100_000 * 1e6;            // 793.1M
+const MIGRATION_RESERVE = 206_900_000 * 1e6;                // 206.9M
+const GRADUATION_THRESHOLD = 84;                            // 84 SOL
+
+// Progress calculation (token-based method)
 const tokensSold = INITIAL_VIRTUAL_TOKEN_RESERVES - virtualTokenReserves;
 const progress = (tokensSold / TOTAL_SELLABLE_TOKENS) * 100;
+
+// Price calculation
+const priceInSol = (virtualSolReserves / 1e9) / (virtualTokenReserves / 1e6);
+
+// Market cap (1B token supply standard)
+const marketCap = 1_000_000_000 * priceInSol * solPriceUSD;
 ```
 
-#### Token Price
+## ML Graduation Prediction System (In Development)
+
+### Overview
+ML models predict token graduation from Pump.fun to Raydium with 85-90% accuracy target.
+
+### Feature Categories (150+ total)
+1. **Enhanced Technical Features** (50+)
+   - Price momentum indicators (RSI, MACD, Bollinger)
+   - Volume-weighted metrics (VWAP)
+   - Microstructure features
+
+2. **Temporal Pattern Features** (40+)
+   - Holder growth velocity across timeframes
+   - Volume acceleration patterns
+   - Cyclical patterns and trend detection
+
+3. **Holder Behavior Features** (30+)
+   - Wealth distribution (Gini coefficient)
+   - Concentration metrics (Herfindahl index)
+   - Wallet reputation scoring
+
+4. **Cross-Token Network Features** (20+)
+   - Creator track record
+   - Related token performance
+   - Market regime indicators
+
+### Implementation Pipeline
 ```typescript
-const priceInSol = (virtualSolReserves / 1e9) / (virtualTokenReserves / 1e6);
+// Feature extraction → Model training → Real-time prediction
+// Models: XGBoost (primary), LSTM (temporal), Ensemble (final)
+// Target: Binary classification (graduated vs not graduated)
+// Window: 4-8 hour prediction horizon
 ```
+
+## Development Best Practices
+
+### Code Patterns
+1. **Monitor Structure**:
+   - Set up gRPC client and filters
+   - Parse with IDLs and custom parsers
+   - Extract and format events
+   - Calculate metrics
+   - Save to database via MonitorService
+
+2. **Error Handling**:
+   - Suppress known parser warnings
+   - Validate data before processing
+   - Implement retry logic for network operations
+   - Log errors with context
+
+3. **Performance Optimization**:
+   - Stream processing with backpressure
+   - Connection pooling for database
+   - Batch operations where possible
+   - Cache frequently accessed data
 
 ### TypeScript Configuration
-- Target: ES2020
-- Module: CommonJS
-- Strict mode enabled for type safety
-- Path aliases configured in `tsconfig.json`
-
-### Testing Strategy
-- Unit tests for parsers and formatters
-- Integration tests for monitors
-- Mock gRPC streams for testing
-
-### Performance Considerations
-- Stream processing with backpressure handling
-- Efficient memory usage for high-volume data
-- Connection pooling for database operations
-- TimescaleDB for optimized time-series queries
-
-## Current Development Status
-
-### Completed
-- ✅ Raydium Launchpad new token mint monitor
-- ✅ Pump.fun comprehensive monitoring suite:
-  - ✅ Token mint monitor with initial price/progress calculation
-  - ✅ Real-time price monitor tracking all trades
-  - ✅ Account monitor with correct bonding curve progress
-  - ✅ Transaction monitor for complete trade history
-- ✅ Bonding curve progress calculation (token-based method)
-- ✅ Accurate price calculations with proper decimal handling
-- ✅ Transaction and account monitoring infrastructure
-- ✅ Database integration with PostgreSQL + TimescaleDB
-- ✅ Pool and transaction data storage with latest_price field
-- ✅ Price aggregates and continuous views
-- ✅ Real-time price tracking with 1-minute candles
-- ✅ Volume statistics and high-volume token detection
-- ✅ UI Viewer with real-time dashboard
-- ✅ gRPC streaming setup
-- ✅ **Technical Scoring System (333 points)** - COMPLETED January 2025:
-  - ✅ Market Cap & Entry Optimization scoring (100 points)
-  - ✅ Bonding Curve Dynamics with velocity metrics (83 points)
-  - ✅ Trading Health Metrics analysis (75 points)
-  - ✅ Sell-off Detection & Response system (75 points)
-  - ✅ Real-time score updates integrated with monitors
-  - ✅ Dashboard display with tooltips and sorting
-  - ✅ Standalone score monitor with alerts
-- ✅ **Database Consolidation** - COMPLETED January 2025:
-  - ✅ Unified MonitorService replacing separate integration files
-  - ✅ File reorganization with operations/ subdirectory
-  - ✅ Centralized TypeScript types in types.ts
-  - ✅ Added transaction batching (50 per batch)
-  - ✅ Implemented simple caching with 5-minute TTL
-  - ✅ Fixed all monitor compatibility issues
-  - ✅ Removed ~400 lines of duplicate code
-
-### In Progress
-- 🔄 Enhanced error handling and reconnection logic
-- 🔄 Holder Score implementation (333 points)
-- 🔄 Social Score implementation (333 points)
-- 🔄 ML pipeline development
-
-### Planned (Priority Order)
-1. **Scoring System**: Implement 999-point evaluation framework
-2. **ML Pipeline**: Feature extraction and model training infrastructure
-3. **Trading Engine**: Signal generation and execution logic
-4. **Social Integration**: TweetScout API for social metrics
-5. **Dashboard**: Real-time monitoring and analytics UI
-
-## Future Development Areas
-
-Based on TECHNICAL_OVERVIEW.md:
-1. **ML Prediction Engine**: Graduation probability model
-2. **Scoring System**: 999-point evaluation framework (Technical/Holder/Social scores)
-3. **Trading Strategy Engine**: Automated entry/exit logic with 300% target
-4. **Data Pipeline**: Handle 100k tokens/week target
-5. **Social Analytics Integration**: TweetScout API integration
-
-## Best Practices
-
-### Code Quality
-- Follow existing code patterns and conventions
-- Write self-documenting code with clear variable names
-- Add JSDoc comments for public APIs
-- Handle errors gracefully with proper logging
+- **Target**: ES2020
+- **Module**: CommonJS
+- **Strict**: Enabled for type safety
+- **Path aliases**: Configured in tsconfig.json
 
 ### Git Workflow
-- Use conventional commits (feat:, fix:, docs:, etc.)
+- Use conventional commits: `feat:`, `fix:`, `docs:`, `refactor:`
 - Keep commits atomic and focused
 - Write clear commit messages explaining the why
 
-### Security
-- Never commit API keys or sensitive data
-- Validate all external inputs
-- Use environment variables for configuration
-- Implement rate limiting for external API calls
+## Current Development Status
+
+### ✅ Completed (January 2025)
+- Technical Scoring System (333 points)
+- Database consolidation with unified MonitorService
+- Pump.fun comprehensive monitoring suite
+- Raydium Launchpad monitoring
+- Graduation tracking system
+- Real-time dashboard with API
+- SOL price service v2
+- IPFS metadata fetching via Pinata
+
+### 🔄 In Progress
+- Holder Score implementation (333 points)
+- ML graduation prediction pipeline
+- Enhanced error handling and reconnection
+
+### 📋 Planned (Priority Order)
+1. Complete 999-point scoring framework
+2. ML model training infrastructure
+3. Social Score via TweetScout API
+4. Automated trading engine
+5. Advanced dashboard analytics
+
+## Quick Debugging Commands
+
+```bash
+# Check database connections
+npx ts-node src/utils/check-db-connections.ts
+
+# Test database setup
+npx ts-node src/utils/test-db.ts
+
+# Kill idle connections
+psql -U postgres -d megatron_v2 -f src/utils/kill-idle-connections.sql
+
+# Test specific features
+npx ts-node src/scripts/test-txn-count.ts
+npx ts-node src/scripts/test-volume-calc.ts
+npx ts-node src/scripts/check-token-images.ts
+```
