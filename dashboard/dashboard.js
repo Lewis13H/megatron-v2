@@ -22,6 +22,7 @@ class Dashboard {
     this.updateConnectionStatus(true);
     this.setupSortHandlers();
     this.setupTabHandlers();
+    this.setupSearchHandlers();
   }
 
   async updateTokens() {
@@ -479,6 +480,112 @@ class Dashboard {
         this.renderPagination();
       });
     });
+  }
+
+  setupSearchHandlers() {
+    const searchInput = document.getElementById('tokenSearch');
+    const searchButton = document.getElementById('searchButton');
+    const clearButton = document.getElementById('clearSearchButton');
+
+    // Search button click handler
+    searchButton.addEventListener('click', () => {
+      this.performSearch();
+    });
+
+    // Enter key in search input
+    searchInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        this.performSearch();
+      }
+    });
+
+    // Clear button click handler
+    clearButton.addEventListener('click', () => {
+      this.clearSearch();
+    });
+  }
+
+  async performSearch() {
+    const searchInput = document.getElementById('tokenSearch');
+    const clearButton = document.getElementById('clearSearchButton');
+    const mintAddress = searchInput.value.trim();
+
+    if (!mintAddress) {
+      this.showSearchMessage('Please enter a mint address', 'error');
+      return;
+    }
+
+    try {
+      const response = await fetch(`${this.apiUrl}/search/${mintAddress}`);
+      const data = await response.json();
+
+      if (data.success && data.token) {
+        // Show only the searched token
+        this.allTokens = [data.token];
+        this.bondingTokens = data.token.isGraduated ? [] : [data.token];
+        this.graduatedTokens = data.token.isGraduated ? [data.token] : [];
+        
+        // Update to the appropriate tab
+        this.activeTab = data.token.isGraduated ? 'graduated' : 'bonding';
+        
+        // Update tab buttons
+        document.querySelectorAll('.tab-button').forEach(btn => {
+          btn.classList.remove('active');
+          if (btn.dataset.tab === this.activeTab) {
+            btn.classList.add('active');
+          }
+        });
+        
+        this.totalTokens = 1;
+        this.currentPage = 1;
+        this.renderTokens();
+        this.renderPagination();
+        
+        // Show clear button
+        clearButton.style.display = 'inline-block';
+        this.showSearchMessage(`Found token: ${data.token.symbol}`, 'success');
+      } else {
+        this.showSearchMessage('Token not found', 'error');
+      }
+    } catch (error) {
+      console.error('Search failed:', error);
+      this.showSearchMessage('Search failed. Please try again.', 'error');
+    }
+  }
+
+  clearSearch() {
+    const searchInput = document.getElementById('tokenSearch');
+    const clearButton = document.getElementById('clearSearchButton');
+    
+    searchInput.value = '';
+    clearButton.style.display = 'none';
+    this.removeSearchMessage();
+    
+    // Reload all tokens
+    this.updateTokens();
+  }
+
+  showSearchMessage(message, type) {
+    this.removeSearchMessage();
+    
+    const messageDiv = document.createElement('div');
+    messageDiv.className = `search-result-message ${type}`;
+    messageDiv.textContent = message;
+    
+    const tabsContainer = document.querySelector('.tabs-container');
+    tabsContainer.parentNode.insertBefore(messageDiv, tabsContainer.nextSibling);
+    
+    // Auto-remove message after 5 seconds
+    setTimeout(() => {
+      this.removeSearchMessage();
+    }, 5000);
+  }
+
+  removeSearchMessage() {
+    const existingMessage = document.querySelector('.search-result-message');
+    if (existingMessage) {
+      existingMessage.remove();
+    }
   }
 }
 

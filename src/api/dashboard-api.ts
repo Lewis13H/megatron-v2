@@ -101,13 +101,15 @@ router.get('/tokens', async (req, res) => {
           quality_score,
           activity_score,
           gini_coefficient,
-          top_10_concentration,
+          bot_ratio as bot_ratio,
           unique_holders,
-          avg_wallet_age_days,
-          bot_ratio,
-          organic_growth_score,
-          is_frozen
-        FROM holder_scores
+          overall_risk,
+          smart_money_ratio,
+          is_frozen,
+          0 as top_10_concentration,
+          0 as avg_wallet_age_days,
+          0 as organic_growth_score
+        FROM holder_scores_v2
         ORDER BY token_id, is_frozen DESC, score_time DESC
       )
       SELECT 
@@ -262,6 +264,224 @@ router.get('/sol-price', async (req, res) => {
     }
   } catch (error) {
     console.error('Error fetching SOL price:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// Search for a token by mint address
+router.get('/search/:mintAddress', async (req, res) => {
+  try {
+    const pool = getDbPool();
+    const mintAddress = req.params.mintAddress;
+    
+    // First get the latest SOL price
+    const solPriceResult = await pool.query(`
+      SELECT price_usd 
+      FROM sol_usd_prices 
+      ORDER BY price_time DESC 
+      LIMIT 1
+    `);
+    const solPriceUsd = solPriceResult.rows[0]?.price_usd || 165;
+
+    // Query for the specific token
+    const query = `
+      WITH token_data AS (
+        SELECT 
+          t.id as token_id,
+          t.mint_address,
+          t.symbol,
+          t.name,
+          t.created_at,
+          t.platform,
+          t.is_graduated,
+          COALESCE(
+            t.metadata->'offChainMetadata'->>'image',
+            t.metadata->>'image',
+            t.metadata->>'imageUri',
+            t.metadata->>'image_uri'
+          ) as image_uri,
+          p.id as pool_id,
+          p.pool_address,
+          p.latest_price_usd,
+          p.latest_price,
+          p.initial_price_usd,
+          p.initial_price,
+          p.bonding_curve_progress
+        FROM tokens t
+        LEFT JOIN pools p ON t.id = p.token_id
+        WHERE LOWER(t.mint_address) = LOWER($1)
+        LIMIT 1
+      ),
+      token_with_scores AS (
+        SELECT 
+          td.*,
+          -- Calculate technical scores if pool exists
+          CASE 
+            WHEN td.pool_id IS NOT NULL THEN 
+              (SELECT total_score FROM calculate_technical_score(td.token_id, td.pool_id))
+            ELSE 0
+          END as technical_score,
+          CASE 
+            WHEN td.pool_id IS NOT NULL THEN 
+              (SELECT market_cap_score FROM calculate_technical_score(td.token_id, td.pool_id))
+            ELSE 0
+          END as market_cap_score,
+          CASE 
+            WHEN td.pool_id IS NOT NULL THEN 
+              (SELECT bonding_curve_score FROM calculate_technical_score(td.token_id, td.pool_id))
+            ELSE 0
+          END as bonding_curve_score,
+          CASE 
+            WHEN td.pool_id IS NOT NULL THEN 
+              (SELECT trading_health_score FROM calculate_technical_score(td.token_id, td.pool_id))
+            ELSE 0
+          END as trading_health_score,
+          CASE 
+            WHEN td.pool_id IS NOT NULL THEN 
+              (SELECT selloff_response_score FROM calculate_technical_score(td.token_id, td.pool_id))
+            ELSE 0
+          END as selloff_response_score,
+          CASE 
+            WHEN td.pool_id IS NOT NULL THEN 
+              (SELECT market_cap_usd FROM calculate_technical_score(td.token_id, td.pool_id))
+            ELSE 0
+          END as market_cap_usd,
+          CASE 
+            WHEN td.pool_id IS NOT NULL THEN 
+              (SELECT buy_sell_ratio FROM calculate_technical_score(td.token_id, td.pool_id))
+            ELSE 0
+          END as buy_sell_ratio,
+          CASE 
+            WHEN td.pool_id IS NOT NULL THEN 
+              (SELECT is_selloff_active FROM calculate_technical_score(td.token_id, td.pool_id))
+            ELSE false
+          END as is_selloff_active
+        FROM token_data td
+      ),
+      latest_holder_scores AS (
+        SELECT DISTINCT ON (token_id)
+          token_id,
+          total_score,
+          distribution_score,
+          quality_score,
+          activity_score,
+          gini_coefficient,
+          bot_ratio,
+          unique_holders,
+          overall_risk,
+          smart_money_ratio,
+          is_frozen
+        FROM holder_scores_v2
+        WHERE token_id = (SELECT token_id FROM token_data)
+        ORDER BY token_id, is_frozen DESC, score_time DESC
+      )
+      SELECT 
+        tws.mint_address as address,
+        tws.symbol,
+        tws.name,
+        tws.image_uri,
+        tws.created_at as token_created_at,
+        tws.platform,
+        COALESCE(tws.latest_price_usd, tws.initial_price_usd, 0) as price_usd,
+        COALESCE(tws.latest_price, tws.initial_price, 0) as price_sol,
+        -- Scoring
+        COALESCE(tws.technical_score, 0) + COALESCE(lhs.total_score, 0) as total_score,
+        COALESCE(tws.technical_score, 0) as technical_score,
+        COALESCE(tws.market_cap_score, 0) as market_cap_score,
+        COALESCE(tws.bonding_curve_score, 0) as bonding_curve_score,
+        COALESCE(tws.trading_health_score, 0) as trading_health_score,
+        COALESCE(tws.selloff_response_score, 0) as selloff_response_score,
+        COALESCE(tws.buy_sell_ratio, 0) as buy_sell_ratio,
+        tws.is_selloff_active,
+        COALESCE(lhs.total_score, 0) as holder_score,
+        COALESCE(lhs.distribution_score, 0) as holder_distribution_score,
+        COALESCE(lhs.quality_score, 0) as holder_quality_score,
+        COALESCE(lhs.activity_score, 0) as holder_activity_score,
+        lhs.gini_coefficient,
+        lhs.unique_holders,
+        lhs.bot_ratio,
+        0 as social_score,
+        (SELECT COUNT(*) FROM transactions WHERE token_id = tws.token_id AND block_time > NOW() - INTERVAL '24 hours') as txns_24h,
+        COALESCE(lhs.unique_holders, 0) as holder_count,
+        EXTRACT(epoch FROM (NOW() - tws.created_at)) as age_seconds,
+        (SELECT COALESCE(SUM(sol_amount), 0) FROM transactions WHERE token_id = tws.token_id AND block_time > NOW() - INTERVAL '24 hours' AND type IN ('buy', 'sell')) as volume_24h_sol,
+        tws.bonding_curve_progress,
+        tws.is_graduated,
+        tws.market_cap_usd
+      FROM token_with_scores tws
+      LEFT JOIN latest_holder_scores lhs ON tws.token_id = lhs.token_id
+    `;
+
+    const result = await pool.query(query, [mintAddress]);
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Token not found'
+      });
+    }
+
+    // Format the data for frontend
+    const row = result.rows[0];
+    const priceSol = parseFloat(row.price_sol) || 0;
+    const priceUsd = parseFloat(row.price_usd) || (priceSol * parseFloat(solPriceUsd));
+    const marketCapUsd = parseFloat(row.market_cap_usd) || (priceUsd * 1_000_000_000);
+    
+    const token = {
+      address: row.address,
+      symbol: row.symbol,
+      name: row.name,
+      image: row.image_uri || null,
+      price: {
+        usd: priceUsd,
+        sol: priceSol
+      },
+      marketCap: {
+        usd: marketCapUsd,
+        sol: priceSol * 1_000_000_000
+      },
+      scores: {
+        total: parseFloat(row.total_score) || 0,
+        technical: parseFloat(row.technical_score) || 0,
+        holder: parseFloat(row.holder_score) || 0,
+        social: row.social_score,
+        marketCap: parseFloat(row.market_cap_score) || 0,
+        bondingCurve: parseFloat(row.bonding_curve_score) || 0,
+        tradingHealth: parseFloat(row.trading_health_score) || 0,
+        selloffResponse: parseFloat(row.selloff_response_score) || 0,
+        holderDistribution: parseFloat(row.holder_distribution_score) || 0,
+        holderQuality: parseFloat(row.holder_quality_score) || 0,
+        holderActivity: parseFloat(row.holder_activity_score) || 0,
+        giniCoefficient: row.gini_coefficient ? parseFloat(row.gini_coefficient) : null,
+        uniqueHolders: row.unique_holders || null,
+        botRatio: row.bot_ratio ? parseFloat(row.bot_ratio) : null
+      },
+      buySellRatio: parseFloat(row.buy_sell_ratio) || 0,
+      isSelloffActive: row.is_selloff_active || false,
+      age: formatAge(row.age_seconds),
+      txns24h: row.txns_24h || 0,
+      holders: row.holder_count || 0,
+      volume24h: {
+        usd: parseFloat(row.volume_24h_sol || 0) * parseFloat(solPriceUsd),
+        sol: parseFloat(row.volume_24h_sol || 0)
+      },
+      bondingCurveProgress: row.bonding_curve_progress !== null ? parseFloat(row.bonding_curve_progress) : null,
+      isGraduated: row.is_graduated || false,
+      platform: row.platform
+    };
+
+    res.json({
+      success: true,
+      token: token,
+      timestamp: new Date(),
+      solPrice: parseFloat(solPriceUsd)
+    });
+
+  } catch (error) {
+    console.error('Error searching for token:', error);
     res.status(500).json({
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error'

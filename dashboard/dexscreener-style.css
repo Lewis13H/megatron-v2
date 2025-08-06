@@ -16,6 +16,88 @@ body {
     overflow-x: auto;
 }
 
+/* Search styles */
+.header-center {
+    flex: 1;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin: 0 20px;
+}
+
+.search-container {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    max-width: 500px;
+    width: 100%;
+}
+
+.token-search {
+    flex: 1;
+    padding: 8px 12px;
+    background-color: #1a1a1a;
+    border: 1px solid #333;
+    border-radius: 6px;
+    color: #fff;
+    font-size: 13px;
+    outline: none;
+    transition: border-color 0.2s ease;
+}
+
+.token-search:focus {
+    border-color: #4CAF50;
+}
+
+.token-search::placeholder {
+    color: #666;
+}
+
+.search-button, .clear-search-button {
+    padding: 8px 16px;
+    background-color: #4CAF50;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    transition: background-color 0.2s ease;
+    white-space: nowrap;
+}
+
+.search-button:hover {
+    background-color: #45a049;
+}
+
+.clear-search-button {
+    background-color: #666;
+}
+
+.clear-search-button:hover {
+    background-color: #555;
+}
+
+.search-result-message {
+    background-color: #1a1a1a;
+    border: 1px solid #333;
+    border-radius: 6px;
+    padding: 15px;
+    margin: 15px;
+    text-align: center;
+    color: #999;
+}
+
+.search-result-message.success {
+    border-color: #4CAF50;
+    color: #4CAF50;
+}
+
+.search-result-message.error {
+    border-color: #f44336;
+    color: #f44336;
+}
+
 /* Tabs styles */
 .tabs-container {
     background-color: #1a1a1a;
