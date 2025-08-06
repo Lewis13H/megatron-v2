@@ -61,6 +61,26 @@ router.get('/tokens', async (req, res) => {
           is_frozen
         FROM holder_scores
         ORDER BY token_id, is_frozen DESC, score_time DESC  -- Prefer frozen scores
+      ),
+      latest_pools AS (
+        SELECT DISTINCT ON (token_id)
+          token_id,
+          pool_address,
+          platform,
+          latest_price_usd,
+          latest_price,
+          initial_price_usd,
+          initial_price,
+          bonding_curve_progress
+        FROM pools
+        ORDER BY token_id, 
+          CASE 
+            WHEN platform = 'pumpswap' THEN 1  -- Prefer PumpSwap pools (post-graduation)
+            WHEN platform = 'raydium' THEN 2   -- Then Raydium
+            WHEN platform = 'pumpfun' THEN 3   -- Then PumpFun
+            ELSE 4
+          END,
+          created_at DESC  -- Most recent pool within platform priority
       )
       SELECT 
         t.mint_address as address,
@@ -74,8 +94,8 @@ router.get('/tokens', async (req, res) => {
         ) as image_uri,
         t.created_at as token_created_at,
         t.platform,
-        COALESCE(p.latest_price_usd, p.initial_price_usd, 0) as price_usd,
-        COALESCE(p.latest_price, p.initial_price, 0) as price_sol,
+        COALESCE(lp.latest_price_usd, lp.initial_price_usd, 0) as price_usd,
+        COALESCE(lp.latest_price, lp.initial_price, 0) as price_sol,
         COALESCE(lts.total_score, 0) + COALESCE(lhs.total_score, 0) as total_score,
         COALESCE(lts.total_score, 0) as technical_score,
         COALESCE(lts.market_cap_score, 0) as market_cap_score,
@@ -102,10 +122,10 @@ router.get('/tokens', async (req, res) => {
         (SELECT COALESCE(SUM(sol_amount), 0) FROM transactions WHERE token_id = t.id AND block_time > NOW() - INTERVAL '24 hours' AND type IN ('buy', 'sell')) as volume_24h_sol,
         0 as reserves_sol,
         0 as liquidity_usd,
-        p.bonding_curve_progress as bonding_curve_progress,
+        lp.bonding_curve_progress as bonding_curve_progress,
         t.is_graduated as is_graduated
       FROM tokens t
-      LEFT JOIN pools p ON t.id = p.token_id
+      LEFT JOIN latest_pools lp ON t.id = lp.token_id
       LEFT JOIN latest_technical_scores lts ON t.id = lts.token_id
       LEFT JOIN latest_holder_scores lhs ON t.id = lhs.token_id
       WHERE t.created_at > NOW() - INTERVAL '30 days'
