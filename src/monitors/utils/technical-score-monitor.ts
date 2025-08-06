@@ -35,32 +35,32 @@ async function startScoringMonitor() {
     
     // Market Cap Info
     console.log(`\n${colors.bright}Market Cap:${colors.reset}`);
-    console.log(`  Value: ${colors.yellow}$${breakdown.marketCap.currentValue.toFixed(2)}${colors.reset}`);
-    console.log(`  Score: ${breakdown.marketCap.total.toFixed(2)}/100 (Optimal: ${breakdown.marketCap.optimalRange})`);
+    console.log(`  Value: ${colors.yellow}$${breakdown.marketCap.currentValue?.toFixed(2) || '0.00'}${colors.reset}`);
+    console.log(`  Score: ${breakdown.marketCap.total?.toFixed(2) || '0.00'}/100 (Optimal: ${breakdown.marketCap.optimalRange || '$15,000 - $30,000'})`);
     
     // Bonding Curve Info
     console.log(`\n${colors.bright}Bonding Curve:${colors.reset}`);
-    console.log(`  Progress: ${colors.cyan}${breakdown.bondingCurve.currentProgress.toFixed(2)}%${colors.reset}`);
-    console.log(`  Velocity: ${breakdown.bondingCurve.velocityPerHour.toFixed(2)}%/hour`);
-    console.log(`  Score: ${breakdown.bondingCurve.total.toFixed(2)}/83`);
+    console.log(`  Progress: ${colors.cyan}${breakdown.bondingCurve.currentProgress?.toFixed(2) || '0.00'}%${colors.reset}`);
+    console.log(`  Velocity: ${breakdown.bondingCurve.velocityPerHour != null ? breakdown.bondingCurve.velocityPerHour.toFixed(2) : 'N/A'}%/hour`);
+    console.log(`  Score: ${breakdown.bondingCurve.total?.toFixed(2) || '0.00'}/83`);
     
     // Trading Health
     console.log(`\n${colors.bright}Trading Health:${colors.reset}`);
-    console.log(`  Buy/Sell Ratio: ${breakdown.tradingHealth.currentRatio.toFixed(2)}`);
-    console.log(`  Volume Trend: ${breakdown.tradingHealth.volumeTrend > 0 ? '+' : ''}${breakdown.tradingHealth.volumeTrend.toFixed(2)}%`);
-    console.log(`  Whale Concentration: ${(breakdown.tradingHealth.whaleConcentration * 100).toFixed(1)}%`);
-    console.log(`  Score: ${breakdown.tradingHealth.total.toFixed(2)}/75`);
+    console.log(`  Buy/Sell Ratio: ${breakdown.tradingHealth.currentRatio?.toFixed(2) || '0.00'}`);
+    console.log(`  Volume Trend: ${breakdown.tradingHealth.volumeTrend != null ? (breakdown.tradingHealth.volumeTrend > 0 ? '+' : '') + breakdown.tradingHealth.volumeTrend.toFixed(2) + '%' : 'N/A'}`);
+    console.log(`  Whale Concentration: ${breakdown.tradingHealth.whaleConcentration != null ? (breakdown.tradingHealth.whaleConcentration * 100).toFixed(1) : '0.0'}%`);
+    console.log(`  Score: ${breakdown.tradingHealth.total?.toFixed(2) || '0.00'}/75`);
     
     // Sell-off Response
-    if (breakdown.selloffResponse.isActive) {
+    if (breakdown.selloffResponse?.isActive) {
       console.log(`\n${colors.bright}${colors.red}⚠️  SELL-OFF DETECTED${colors.reset}`);
-      console.log(`  Price Drop: -${breakdown.selloffResponse.priceDropPercent.toFixed(2)}%`);
-      console.log(`  Recovery Strength: ${breakdown.selloffResponse.recoveryStrength.toFixed(2)}x`);
+      console.log(`  Price Drop: -${breakdown.selloffResponse.priceDropPercent?.toFixed(2) || '0.00'}%`);
+      console.log(`  Recovery Strength: ${breakdown.selloffResponse.recoveryStrength?.toFixed(2) || '0.00'}x`);
     } else {
       console.log(`\n${colors.bright}Sell-off Response:${colors.reset}`);
       console.log(`  Status: ${colors.green}No sell-off detected${colors.reset}`);
     }
-    console.log(`  Score: ${breakdown.selloffResponse.total.toFixed(2)}/75`);
+    console.log(`  Score: ${breakdown.selloffResponse?.total?.toFixed(2) || '0.00'}/75`);
     
     console.log(`\n${colors.dim}${'─'.repeat(60)}${colors.reset}`);
   });
