@@ -233,6 +233,13 @@ export class MonitorService extends BaseOperations {
   }
 
   /**
+   * Update pool metadata
+   */
+  async updatePoolMetadata(poolAddress: string, metadata: any): Promise<void> {
+    await this.poolOps.updatePoolMetadata(poolAddress, metadata);
+  }
+
+  /**
    * Get or resolve token and pool IDs from mint address
    */
   private async getTokenAndPoolIds(

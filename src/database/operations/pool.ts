@@ -238,6 +238,16 @@ export class PoolOperations extends BaseOperations {
   }
 
   /**
+   * Update pool metadata
+   */
+  async updatePoolMetadata(poolAddress: string, metadata: any): Promise<void> {
+    await this.execute(
+      'UPDATE pools SET metadata = $1, updated_at = NOW() WHERE pool_address = $2',
+      [JSON.stringify(metadata), poolAddress]
+    );
+  }
+
+  /**
    * Calculate initial price from reserves
    */
   calculateInitialPrice(baseReserves: string, quoteReserves: string, baseDecimals: number, quoteDecimals: number): number {
