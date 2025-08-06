@@ -8,6 +8,9 @@ class Dashboard {
     this.tokensPerPage = 50;
     this.totalTokens = 0;
     this.allTokens = [];
+    this.bondingTokens = [];
+    this.graduatedTokens = [];
+    this.activeTab = 'bonding'; // Default to bonding tab
     this.sortColumn = 'total'; // Default sort by total score
     this.sortDirection = 'desc';
   }
@@ -18,6 +21,7 @@ class Dashboard {
     this.startAutoUpdate();
     this.updateConnectionStatus(true);
     this.setupSortHandlers();
+    this.setupTabHandlers();
   }
 
   async updateTokens() {
@@ -27,7 +31,11 @@ class Dashboard {
       
       if (data.tokens) {
         this.allTokens = data.tokens;
-        this.totalTokens = data.tokens.length;
+        // Split tokens into bonding and graduated
+        this.bondingTokens = data.tokens.filter(token => !token.isGraduated);
+        this.graduatedTokens = data.tokens.filter(token => token.isGraduated);
+        
+        this.totalTokens = this.activeTab === 'bonding' ? this.bondingTokens.length : this.graduatedTokens.length;
         this.renderTokens();
         this.renderPagination();
       }
@@ -54,9 +62,12 @@ class Dashboard {
     const tbody = document.querySelector('.token-table tbody');
     tbody.innerHTML = '';
 
+    // Use the appropriate token list based on active tab
+    const tokenList = this.activeTab === 'bonding' ? this.bondingTokens : this.graduatedTokens;
+    
     const startIndex = (this.currentPage - 1) * this.tokensPerPage;
     const endIndex = startIndex + this.tokensPerPage;
-    const paginatedTokens = this.allTokens.slice(startIndex, endIndex);
+    const paginatedTokens = tokenList.slice(startIndex, endIndex);
 
     paginatedTokens.forEach(token => {
       const row = document.createElement('tr');
@@ -409,8 +420,8 @@ class Dashboard {
       this.sortDirection = 'desc';
     }
     
-    // Sort the tokens
-    this.allTokens.sort((a, b) => {
+    // Sort all token lists
+    const sortFunction = (a, b) => {
       let aVal = column === 'total' ? a.scores.total : a.scores[column];
       let bVal = column === 'total' ? b.scores.total : b.scores[column];
       
@@ -419,10 +430,39 @@ class Dashboard {
       } else {
         return aVal - bVal;
       }
-    });
+    };
+    
+    this.allTokens.sort(sortFunction);
+    this.bondingTokens.sort(sortFunction);
+    this.graduatedTokens.sort(sortFunction);
     
     // Re-render
     this.renderTokens();
+  }
+  
+  setupTabHandlers() {
+    const tabButtons = document.querySelectorAll('.tab-button');
+    tabButtons.forEach(button => {
+      button.addEventListener('click', (e) => {
+        // Remove active class from all buttons
+        tabButtons.forEach(btn => btn.classList.remove('active'));
+        // Add active class to clicked button
+        e.target.classList.add('active');
+        
+        // Update active tab
+        this.activeTab = e.target.dataset.tab;
+        
+        // Reset to first page when switching tabs
+        this.currentPage = 1;
+        
+        // Update total tokens count for the active tab
+        this.totalTokens = this.activeTab === 'bonding' ? this.bondingTokens.length : this.graduatedTokens.length;
+        
+        // Re-render tokens and pagination
+        this.renderTokens();
+        this.renderPagination();
+      });
+    });
   }
 }
 
