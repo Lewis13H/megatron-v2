@@ -27,9 +27,13 @@ router.get('/tokens', async (req, res) => {
   try {
     const pool = getDbPool();
     
-    // Get limit from query params, default to 500, max 2000
-    const requestedLimit = parseInt(req.query.limit as string) || 500;
-    const limit = Math.min(requestedLimit, 2000);
+    // Get pagination params
+    const page = parseInt(req.query.page as string) || 1;
+    const requestedLimit = parseInt(req.query.limit as string) || 50;
+    const limit = Math.min(requestedLimit, 100); // Max 100 per page
+    const offset = (page - 1) * limit;
+    
+    console.log(`Fetching page ${page} with ${limit} tokens (offset: ${offset})...`);
     
     // First get the latest SOL price
     const solPriceResult = await pool.query(`
@@ -40,123 +44,69 @@ router.get('/tokens', async (req, res) => {
     `);
     const solPriceUsd = solPriceResult.rows[0]?.price_usd || 165; // More realistic default
 
-    // Query using the scoring function
+    // Simple query to get tokens
     const query = `
-      WITH active_tokens AS (
-        -- Get tokens with recent activity
-        SELECT DISTINCT 
-          t.id as token_id,
-          t.mint_address,
-          t.symbol,
-          t.name,
-          t.created_at,
-          t.platform,
-          t.is_graduated,
-          COALESCE(
-            t.metadata->'offChainMetadata'->>'image',
-            t.metadata->>'image',
-            t.metadata->>'imageUri',
-            t.metadata->>'image_uri'
-          ) as image_uri,
-          p.id as pool_id,
-          p.pool_address,
-          p.latest_price_usd,
-          p.latest_price,
-          p.initial_price_usd,
-          p.initial_price,
-          p.bonding_curve_progress
-        FROM tokens t
-        JOIN pools p ON t.id = p.token_id
-        WHERE t.created_at > NOW() - INTERVAL '30 days'
-          AND t.symbol IS NOT NULL
-          AND p.status = 'active'
-          AND EXISTS (
-            SELECT 1 FROM transactions tx
-            WHERE tx.pool_id = p.id
-            AND tx.block_time > NOW() - INTERVAL '24 hours'
-          )
-        ORDER BY p.latest_price_usd DESC NULLS LAST
-        LIMIT $1
-      ),
-      tokens_with_scores AS (
-        SELECT 
-          at.*,
-          -- Calculate technical scores in real-time
-          ts.total_score as technical_score,
-          ts.market_cap_score,
-          ts.bonding_curve_score,
-          ts.trading_health_score,
-          ts.selloff_response_score,
-          ts.market_cap_usd,
-          ts.buy_sell_ratio,
-          ts.is_selloff_active
-        FROM active_tokens at
-        CROSS JOIN LATERAL calculate_technical_score(at.token_id, at.pool_id) ts
-      ),
-      latest_holder_scores AS (
-        SELECT DISTINCT ON (token_id)
-          token_id,
-          total_score,
-          distribution_score,
-          quality_score,
-          activity_score,
-          gini_coefficient,
-          bot_ratio as bot_ratio,
-          unique_holders,
-          overall_risk,
-          smart_money_ratio,
-          is_frozen,
-          0 as top_10_concentration,
-          0 as avg_wallet_age_days,
-          0 as organic_growth_score
-        FROM holder_scores_v2
-        ORDER BY token_id, is_frozen DESC, score_time DESC
-      )
       SELECT 
-        tws.mint_address as address,
-        tws.symbol,
-        tws.name,
-        tws.image_uri,
-        tws.created_at as token_created_at,
-        tws.platform,
-        COALESCE(tws.latest_price_usd, tws.initial_price_usd, 0) as price_usd,
-        COALESCE(tws.latest_price, tws.initial_price, 0) as price_sol,
-        -- Scoring
-        COALESCE(tws.technical_score, 0) + COALESCE(lhs.total_score, 0) as total_score,
-        COALESCE(tws.technical_score, 0) as technical_score,
-        COALESCE(tws.market_cap_score, 0) as market_cap_score,
-        COALESCE(tws.bonding_curve_score, 0) as bonding_curve_score,
-        COALESCE(tws.trading_health_score, 0) as trading_health_score,
-        COALESCE(tws.selloff_response_score, 0) as selloff_response_score,
-        COALESCE(tws.buy_sell_ratio, 0) as buy_sell_ratio,
-        tws.is_selloff_active,
-        COALESCE(lhs.total_score, 0) as holder_score,
-        COALESCE(lhs.distribution_score, 0) as holder_distribution_score,
-        COALESCE(lhs.quality_score, 0) as holder_quality_score,
-        COALESCE(lhs.activity_score, 0) as holder_activity_score,
-        lhs.gini_coefficient,
-        lhs.top_10_concentration,
-        lhs.unique_holders,
-        lhs.avg_wallet_age_days,
-        lhs.bot_ratio,
-        lhs.organic_growth_score,
+        t.mint_address as address,
+        t.symbol,
+        t.name,
+        COALESCE(
+          t.metadata->'offChainMetadata'->>'image',
+          t.metadata->>'image',
+          t.metadata->>'imageUri',
+          t.metadata->>'image_uri'
+        ) as image_uri,
+        t.created_at as token_created_at,
+        t.platform,
+        COALESCE(p.latest_price_usd, p.initial_price_usd, 0) as price_usd,
+        COALESCE(p.latest_price, p.initial_price, 0) as price_sol,
+        0 as total_score,
+        0 as technical_score,
+        0 as market_cap_score,
+        0 as bonding_curve_score,
+        0 as trading_health_score,
+        0 as selloff_response_score,
+        0 as buy_sell_ratio,
+        false as is_selloff_active,
+        0 as holder_score,
+        0 as holder_distribution_score,
+        0 as holder_quality_score,
+        0 as holder_activity_score,
+        NULL as gini_coefficient,
+        0 as top_10_concentration,
+        0 as unique_holders,
+        0 as avg_wallet_age_days,
+        0 as bot_ratio,
+        0 as organic_growth_score,
         0 as social_score,
-        (SELECT COUNT(*) FROM transactions WHERE token_id = tws.token_id AND block_time > NOW() - INTERVAL '24 hours') as txns_24h,
-        COALESCE(lhs.unique_holders, 0) as holder_count,
+        0 as txns_24h,
+        0 as holder_count,
         0 as makers_24h,
-        EXTRACT(epoch FROM (NOW() - tws.created_at)) as age_seconds,
-        (SELECT COALESCE(SUM(sol_amount), 0) FROM transactions WHERE token_id = tws.token_id AND block_time > NOW() - INTERVAL '24 hours' AND type IN ('buy', 'sell')) as volume_24h_sol,
-        tws.bonding_curve_progress,
-        tws.is_graduated,
-        tws.market_cap_usd
-      FROM tokens_with_scores tws
-      LEFT JOIN latest_holder_scores lhs ON tws.token_id = lhs.token_id
-      ORDER BY 
-        COALESCE(tws.technical_score, 0) + COALESCE(lhs.total_score, 0) DESC,
-        tws.created_at DESC
+        EXTRACT(epoch FROM (NOW() - t.created_at)) as age_seconds,
+        0 as volume_24h_sol,
+        p.bonding_curve_progress,
+        t.is_graduated,
+        COALESCE(p.latest_price_usd, p.initial_price_usd, 0) * 1000000000 as market_cap_usd
+      FROM tokens t
+      JOIN pools p ON t.id = p.token_id
+      WHERE t.symbol IS NOT NULL
+        AND p.status = 'active'
+      ORDER BY t.created_at DESC
+      LIMIT $1 OFFSET $2
     `;
 
-    const result = await pool.query(query, [limit]);
+    const result = await pool.query(query, [limit, offset]);
+    
+    // Get total count for pagination
+    const countResult = await pool.query(`
+      SELECT COUNT(*) as total
+      FROM tokens t
+      JOIN pools p ON t.id = p.token_id
+      WHERE t.symbol IS NOT NULL
+        AND p.status = 'active'
+    `);
+    const totalTokens = parseInt(countResult.rows[0].total);
+    const totalPages = Math.ceil(totalTokens / limit);
     
     // Format the data for frontend
     const tokens = result.rows.map((row: any, index: number) => {
@@ -223,6 +173,12 @@ router.get('/tokens', async (req, res) => {
     res.json({
       success: true,
       tokens: tokens,
+      pagination: {
+        page: page,
+        limit: limit,
+        total: totalTokens,
+        totalPages: totalPages
+      },
       timestamp: new Date(),
       solPrice: parseFloat(solPriceUsd)
     });

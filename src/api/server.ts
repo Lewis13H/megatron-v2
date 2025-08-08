@@ -52,3 +52,15 @@ process.on('SIGINT', () => {
     process.exit(0);
   });
 });
+
+// Keep the process alive
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught Exception:', err);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
+// Prevent immediate exit
+setInterval(() => {}, 1000 * 60 * 60);

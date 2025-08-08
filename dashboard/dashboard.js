@@ -27,18 +27,23 @@ class Dashboard {
 
   async updateTokens() {
     try {
-      const response = await fetch(`${this.apiUrl}/tokens?limit=2000`);
+      const url = `${this.apiUrl}/tokens?page=${this.currentPage}&limit=${this.tokensPerPage}`;
+      console.log('Fetching tokens from:', url);
+      const response = await fetch(url);
       const data = await response.json();
+      console.log('API Response:', { success: data.success, tokenCount: data.tokens?.length, pagination: data.pagination });
       
-      if (data.tokens) {
+      if (data.tokens && data.pagination) {
         this.allTokens = data.tokens;
-        // Split tokens into bonding and graduated
-        this.bondingTokens = data.tokens.filter(token => !token.isGraduated);
-        this.graduatedTokens = data.tokens.filter(token => token.isGraduated);
+        // For server-side pagination, we don't filter here
+        this.bondingTokens = data.tokens;
+        this.graduatedTokens = data.tokens;
         
-        this.totalTokens = this.activeTab === 'bonding' ? this.bondingTokens.length : this.graduatedTokens.length;
+        this.totalTokens = data.pagination.total;
         this.renderTokens();
-        this.renderPagination();
+        this.renderPagination(data.pagination);
+      } else {
+        console.error('Invalid API response structure:', data);
       }
     } catch (error) {
       console.error('Failed to fetch tokens:', error);
@@ -63,14 +68,12 @@ class Dashboard {
     const tbody = document.querySelector('.token-table tbody');
     tbody.innerHTML = '';
 
-    // Use the appropriate token list based on active tab
-    const tokenList = this.activeTab === 'bonding' ? this.bondingTokens : this.graduatedTokens;
-    
-    const startIndex = (this.currentPage - 1) * this.tokensPerPage;
-    const endIndex = startIndex + this.tokensPerPage;
-    const paginatedTokens = tokenList.slice(startIndex, endIndex);
+    // With server-side pagination, tokens are already paginated
+    const tokenList = this.allTokens;
 
-    paginatedTokens.forEach(token => {
+    tokenList.forEach((token, index) => {
+      // Calculate actual rank based on page
+      token.rank = ((this.currentPage - 1) * this.tokensPerPage) + index + 1;
       const row = document.createElement('tr');
       row.innerHTML = `
         <td class="token-info">
@@ -307,7 +310,7 @@ class Dashboard {
     }
   }
 
-  renderPagination() {
+  renderPagination(paginationInfo) {
     const paginationContainer = document.querySelector('.pagination');
     if (!paginationContainer) {
       // Create pagination container if it doesn't exist
@@ -316,7 +319,7 @@ class Dashboard {
       document.querySelector('.token-table').after(container);
     }
     
-    const totalPages = Math.ceil(this.totalTokens / this.tokensPerPage);
+    const totalPages = paginationInfo ? paginationInfo.totalPages : Math.ceil(this.totalTokens / this.tokensPerPage);
     const pagination = document.querySelector('.pagination');
     pagination.innerHTML = '';
     
@@ -367,13 +370,12 @@ class Dashboard {
     pagination.appendChild(lastBtn);
   }
   
-  changePage(page) {
+  async changePage(page) {
     const totalPages = Math.ceil(this.totalTokens / this.tokensPerPage);
     if (page < 1 || page > totalPages) return;
     
     this.currentPage = page;
-    this.renderTokens();
-    this.renderPagination();
+    await this.updateTokens(); // Fetch new page from server
     
     // Scroll to top of table
     document.querySelector('.token-table').scrollIntoView({ behavior: 'smooth' });
