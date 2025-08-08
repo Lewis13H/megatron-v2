@@ -26,11 +26,14 @@
     "score:monitor": "npx tsx src/monitors/utils/score-monitor.ts",
     "score:migrate": "npx tsx src/database/setup/run-technical-scoring-migration.ts",
     "holder:monitor:v2": "npx tsx src/monitors/holder-monitor-v2.ts",
+    "holder:monitor:ultra": "npx tsx src/monitors/holder-monitor-ultra-fast.ts",
     "holder:migration": "npx tsx src/database/migrations/018_holder_analysis_v2.sql",
     "pumpswap:pool": "npx tsx src/monitors/pumpswap/pumpswap-new-pool-monitor.ts",
     "pumpswap:account": "npx tsx src/monitors/pumpswap/pumpswap-account-monitor.ts",
     "pumpswap:transaction": "npx ts-node src/monitors/pumpswap/pumpswap-transaction-monitor.ts",
-    "pumpswap:price": "npx ts-node src/monitors/pumpswap/pumpswap-price-monitor.ts"
+    "pumpswap:price": "npx ts-node src/monitors/pumpswap/pumpswap-price-monitor.ts",
+    "wallet-tracker:collect": "npx tsx src/services/wallet-tracker/collect-historical-data.ts",
+    "wallet-tracker:migrate": "psql -U postgres -d megatron_v2 -f src/database/migrations/024_create_wallet_tracker_tables.sql"
   },
   "dependencies": {
     "@coral-xyz/anchor": "^0.30.1",
