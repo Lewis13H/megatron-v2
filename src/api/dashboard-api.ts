@@ -70,7 +70,7 @@ router.get('/tokens', async (req, res) => {
     
     const orderByColumn = sortColumnMap[sortBy] || 'token_created_at';
     
-    // Simple query to get tokens with dynamic sorting
+    // Query with proper total score calculation using aggregate scores when available
     const query = `
       WITH token_data AS (
         SELECT 
@@ -89,27 +89,31 @@ router.get('/tokens', async (req, res) => {
           t.platform,
           COALESCE(p.latest_price_usd, p.initial_price_usd, 0) as price_usd,
           COALESCE(p.latest_price, p.initial_price, 0) as price_sol,
-          ts.total_score,
-          ts.total_score as technical_score,
+          -- Use aggregate scores if available, otherwise calculate
+          COALESCE(
+            ag.total_score, 
+            COALESCE(ts.total_score, 0) + COALESCE(hs.total_score, 0) + COALESCE(ss.social_score, 0)
+          ) as total_score,
+          COALESCE(ag.technical_score, ts.total_score, 0) as technical_score,
           ts.market_cap_score,
           ts.bonding_curve_score,
           ts.trading_health_score,
           ts.selloff_response_score,
           ts.buy_sell_ratio,
           ts.is_selloff_active,
-          COALESCE(hs.total_score, 0) as holder_score,
+          COALESCE(ag.holder_score, hs.total_score, 0) as holder_score,
           COALESCE(hs.distribution_score, 0) as holder_distribution_score,
           COALESCE(hs.quality_score, 0) as holder_quality_score,
           COALESCE(hs.activity_score, 0) as holder_activity_score,
-          NULL as gini_coefficient,
-          0 as top_10_concentration,
-          0 as unique_holders,
-          0 as avg_wallet_age_days,
-          0 as bot_ratio,
-          0 as organic_growth_score,
-          0 as social_score,
+          COALESCE(ag.gini_coefficient, hs.gini_coefficient) as gini_coefficient,
+          COALESCE(hsnap.top_10_percent, 0) as top_10_concentration,
+          COALESCE(ag.unique_holders, hs.unique_holders, 0) as unique_holders,
+          COALESCE(hsnap.avg_wallet_age_days, 0) as avg_wallet_age_days,
+          COALESCE(ag.bot_ratio, hs.bot_ratio, 0) as bot_ratio,
+          COALESCE(hsnap.organic_growth_score, 0) as organic_growth_score,
+          COALESCE(ag.social_score, ss.social_score, 0) as social_score,
           (SELECT COUNT(*) FROM transactions WHERE token_id = t.id AND block_time > NOW() - INTERVAL '24 hours') as txns_24h,
-          0 as holder_count,
+          COALESCE(hs.unique_holders, 0) as holder_count,
           0 as makers_24h,
           EXTRACT(epoch FROM (NOW() - t.created_at)) as age_seconds,
           (SELECT COALESCE(SUM(sol_amount), 0) FROM transactions WHERE token_id = t.id AND block_time > NOW() - INTERVAL '24 hours' AND type IN ('buy', 'sell')) as volume_24h_sol,
@@ -127,6 +131,21 @@ router.get('/tokens', async (req, res) => {
           ORDER BY score_time DESC
           LIMIT 1
         ) hs ON true
+        LEFT JOIN LATERAL (
+          SELECT * FROM holder_snapshots_v2
+          WHERE token_id = t.id
+          ORDER BY snapshot_time DESC
+          LIMIT 1
+        ) hsnap ON true
+        LEFT JOIN LATERAL (
+          -- Get aggregate scores if available
+          SELECT * FROM latest_aggregate_scores
+          WHERE token_id = t.id
+        ) ag ON true
+        LEFT JOIN LATERAL (
+          -- Placeholder for social scores (not implemented yet)
+          SELECT 0 as social_score
+        ) ss ON true
         WHERE t.symbol IS NOT NULL
           AND p.status = 'active'
       )
@@ -136,6 +155,12 @@ router.get('/tokens', async (req, res) => {
     `;
 
     const result = await pool.query(query, [limit, offset]);
+    
+    // Debug logging for score verification
+    if (result.rows.length > 0) {
+      const firstRow = result.rows[0];
+      console.log(`Debug - First token (${firstRow.symbol}): total_score=${firstRow.total_score}, technical=${firstRow.technical_score}, holder=${firstRow.holder_score}`);
+    }
     
     // Get total count for pagination
     const countResult = await pool.query(`
@@ -154,6 +179,12 @@ router.get('/tokens', async (req, res) => {
       const priceUsd = parseFloat(row.price_usd) || (priceSol * parseFloat(solPriceUsd));
       const marketCapUsd = parseFloat(row.market_cap_usd) || (priceUsd * 1_000_000_000);
       
+      // Calculate total score properly (in case DB query didn't)
+      const technicalScore = parseFloat(row.technical_score) || 0;
+      const holderScore = parseFloat(row.holder_score) || 0;
+      const socialScore = parseFloat(row.social_score) || 0;
+      const totalScore = parseFloat(row.total_score) || (technicalScore + holderScore + socialScore);
+      
       return {
         rank: index + 1,
         address: row.address,
@@ -169,10 +200,10 @@ router.get('/tokens', async (req, res) => {
           sol: priceSol * 1_000_000_000
         },
         scores: {
-          total: parseFloat(row.total_score) || 0,
-          technical: parseFloat(row.technical_score) || 0,
-          holder: parseFloat(row.holder_score) || 0,
-          social: row.social_score,
+          total: totalScore,  // Properly calculated total
+          technical: technicalScore,
+          holder: holderScore,
+          social: socialScore,
           // Technical score breakdown
           marketCap: parseFloat(row.market_cap_score) || 0,
           bondingCurve: parseFloat(row.bonding_curve_score) || 0,
