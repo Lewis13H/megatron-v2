@@ -25,6 +25,14 @@ interface MonitorConfig {
   standardBatchSize: number;
 }
 
+/**
+ * Ultra-Fast Holder Monitor with aggressive re-analysis intervals:
+ * - Instant analysis: Every 3 seconds for tokens with tech score 150+
+ * - Re-analysis for 200+ tech scores: Every 3 minutes
+ * - Re-analysis for 180+ tech scores: Every 5 minutes
+ * - Ultra-critical (500+ combined): Every 10 seconds
+ * - Critical (400+ combined): Every 30 seconds
+ */
 export class UltraFastHolderMonitor {
   private analysisService: OptimizedHolderAnalysisService;
   private dbPool: any;
@@ -332,11 +340,12 @@ export class UltraFastHolderMonitor {
         FROM pools p
         WHERE 
           p.token_id = t.id
-          AND t.last_technical_score >= 180
+          AND t.last_technical_score >= 150  -- Lowered threshold
           AND (
             t.last_holder_score IS NULL OR 
             t.last_holder_score = 0 OR
-            t.last_holder_analysis < NOW() - INTERVAL '30 minutes'
+            (t.last_technical_score >= 200 AND t.last_holder_analysis < NOW() - INTERVAL '3 minutes') OR  -- 3 min for 200+
+            (t.last_technical_score >= 180 AND t.last_holder_analysis < NOW() - INTERVAL '5 minutes')     -- 5 min for 180+
           )
           AND p.status = 'active'
           AND t.instant_analysis_required = FALSE
