@@ -27,7 +27,6 @@
     "score:migrate": "npx tsx src/database/setup/run-technical-scoring-migration.ts",
     "holder:monitor:v2": "npx tsx src/monitors/holder-monitor-v2.ts",
     "holder:monitor:ultra": "npx tsx src/monitors/holder-monitor-ultra-fast.ts",
-    "holder:monitor:instant": "npx tsx src/monitors/holder-instant-analysis.ts",
     "holder:migration": "npx tsx src/database/migrations/018_holder_analysis_v2.sql",
     "pumpswap:pool": "npx tsx src/monitors/pumpswap/pumpswap-new-pool-monitor.ts",
     "pumpswap:account": "npx tsx src/monitors/pumpswap/pumpswap-account-monitor.ts",

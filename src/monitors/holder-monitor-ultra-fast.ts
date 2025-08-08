@@ -31,6 +31,7 @@ export class UltraFastHolderMonitor {
   private isRunning = false;
   private config: MonitorConfig;
   private analysisStats = {
+    instant: 0,
     ultraCritical: 0,
     critical: 0,
     highPriority: 0,
@@ -43,6 +44,7 @@ export class UltraFastHolderMonitor {
   private ultraCriticalQueue: Token[] = [];
   private criticalQueue: Token[] = [];
   private standardQueue: Token[] = [];
+  private instantQueue: Token[] = []; // Queue for high technical scores without holder scores
   
   // Track last analysis time for rate limiting
   private lastAnalysisTime = new Map<string, number>();
@@ -73,6 +75,7 @@ export class UltraFastHolderMonitor {
     
     // Start multiple parallel loops for different tiers
     const loops = [
+      this.instantAnalysisLoop(),   // Immediate for high tech scores without holder scores
       this.ultraCriticalLoop(),     // 30-second updates
       this.criticalLoop(),           // 1-minute updates
       this.standardLoop(),           // Variable updates
@@ -85,6 +88,19 @@ export class UltraFastHolderMonitor {
   async stop(): Promise<void> {
     console.log(chalk.yellow('\n⏹️  Stopping Ultra-Fast Monitor...'));
     this.isRunning = false;
+  }
+  
+  // Instant analysis loop - runs every 5 seconds for high tech scores without holder scores
+  private async instantAnalysisLoop(): Promise<void> {
+    while (this.isRunning) {
+      try {
+        await this.processInstantAnalysisTokens();
+        await this.sleep(5000); // 5 seconds
+      } catch (error) {
+        console.error(chalk.red('Error in instant analysis loop:'), error);
+        await this.sleep(5000);
+      }
+    }
   }
   
   // Ultra-critical loop - runs every 10 seconds
@@ -137,6 +153,63 @@ export class UltraFastHolderMonitor {
         console.error(chalk.red('Error refreshing queues:'), error);
         await this.sleep(30000);
       }
+    }
+  }
+  
+  private async processInstantAnalysisTokens(): Promise<void> {
+    try {
+      // Get tokens requiring instant analysis (high tech score without holder score)
+      const result = await this.dbPool.query('SELECT * FROM get_instant_analysis_tokens()');
+      
+      if (result.rows.length === 0) return;
+      
+      console.log(chalk.red.bold(`\n⚡ INSTANT ANALYSIS (${result.rows.length} tokens with tech ≥180 missing holder scores)`));
+      
+      const batch = result.rows.slice(0, 5); // Process up to 5 at once
+      
+      const promises = batch.map(async (token: any) => {
+        console.log(chalk.yellow.bold(`  🎯 ${token.symbol}: Tech=${token.technical_score} | ${token.reason}`));
+        
+        const result = await this.analysisService.analyzeToken(
+          token.mint_address,
+          token.bonding_curve_progress,
+          'high'
+        );
+        
+        if (result) {
+          // Clear instant flag
+          await this.dbPool.query(
+            'SELECT clear_instant_analysis_flag($1, $2)',
+            [token.token_id, result.score.total]
+          );
+          
+          // Update scores
+          await this.dbPool.query(
+            'SELECT update_token_scores_and_frequency($1, $2, $3)',
+            [token.token_id, 'holder', result.score.total]
+          );
+          
+          const combined = token.technical_score + result.score.total;
+          const color = combined >= 500 ? chalk.red.bold : combined >= 400 ? chalk.yellow : chalk.green;
+          
+          console.log(color(`    ✅ ${token.symbol}: Holder=${result.score.total} | Combined=${combined}/666`));
+          
+          if (combined >= 500) {
+            console.log(chalk.red.bold(`    🔥 ULTRA-CRITICAL: ${token.symbol} reached ${combined}/666!`));
+          }
+        }
+        
+        this.lastAnalysisTime.set(token.mint_address, Date.now());
+        this.analysisStats.instant++;
+        this.analysisStats.total++;
+        
+        return result;
+      });
+      
+      await Promise.allSettled(promises);
+      
+    } catch (error) {
+      console.error(chalk.red('Error processing instant analysis:'), error);
     }
   }
   
@@ -248,6 +321,32 @@ export class UltraFastHolderMonitor {
   
   private async refreshQueues(): Promise<void> {
     try {
+      // First check for any tokens with high technical scores missing holder scores
+      const instantCheck = await this.dbPool.query(`
+        UPDATE tokens t
+        SET 
+          instant_analysis_required = TRUE,
+          instant_analysis_reason = 'Tech ' || last_technical_score::TEXT || ' without holder score',
+          instant_analysis_triggered_at = NOW(),
+          next_holder_analysis = NOW()
+        FROM pools p
+        WHERE 
+          p.token_id = t.id
+          AND t.last_technical_score >= 180
+          AND (
+            t.last_holder_score IS NULL OR 
+            t.last_holder_score = 0 OR
+            t.last_holder_analysis < NOW() - INTERVAL '30 minutes'
+          )
+          AND p.status = 'active'
+          AND t.instant_analysis_required = FALSE
+        RETURNING t.symbol, t.last_technical_score
+      `);
+      
+      if (instantCheck.rows.length > 0) {
+        console.log(chalk.yellow.bold(`\n🔍 Found ${instantCheck.rows.length} high-tech tokens needing instant holder analysis`));
+      }
+      
       // Get ultra-critical and critical tokens
       const result = await this.dbPool.query(`
         SELECT 
@@ -402,6 +501,7 @@ export class UltraFastHolderMonitor {
     console.log(chalk.cyan('\n📊 REAL-TIME STATS'));
     console.log(chalk.gray('━'.repeat(60)));
     console.log(chalk.white(`Runtime: ${minutes}m ${seconds}s | Analysis Rate: ${analysisRate}/min`));
+    console.log(chalk.yellow.bold(`⚡ Instant (Tech≥180): ${this.analysisStats.instant} analyzed`));
     console.log(chalk.red(`🔥 Ultra-Critical: ${this.analysisStats.ultraCritical} analyzed | ${queueStats.ultraCritical} queued`));
     console.log(chalk.yellow(`⚡ Critical: ${this.analysisStats.critical} analyzed | ${queueStats.critical} queued`));
     console.log(chalk.cyan(`📈 Standard: ${this.analysisStats.standard} analyzed`));
