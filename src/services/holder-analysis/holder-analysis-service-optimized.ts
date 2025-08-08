@@ -354,9 +354,9 @@ export class OptimizedHolderAnalysisService {
   private rateLimiter: RateLimiter;
   private dbPool: any;
   
-  // Parallel processing configuration (reduced for rate limiting)
-  private readonly PARALLEL_BATCH_SIZE = 10; // Further reduced
-  private readonly MAX_CONCURRENT_REQUESTS = 2; // Further reduced
+  // Parallel processing configuration (optimized for Helius 10 RPS limit)
+  private readonly PARALLEL_BATCH_SIZE = 20; // Can handle more with 10 RPS
+  private readonly MAX_CONCURRENT_REQUESTS = 5; // Safe with rate limiter
   
   // Known system addresses to exclude
   private readonly SYSTEM_ADDRESSES = new Set([
@@ -380,7 +380,7 @@ export class OptimizedHolderAnalysisService {
     this.creditTracker = CreditTracker.getInstance(10_000_000);
     this.metricsCalculator = new MetricsCalculator();
     this.patternDetector = new PatternDetector();
-    this.rateLimiter = new RateLimiter(300, 5); // 300 per minute, 5 per second
+    this.rateLimiter = new RateLimiter(600, 10); // 10 per second for DAS/Enhanced APIs (Helius Developer plan)
     
     // Schedule periodic cache cleanup
     setInterval(() => this.cache.cleanup(), 600000); // Every 10 minutes

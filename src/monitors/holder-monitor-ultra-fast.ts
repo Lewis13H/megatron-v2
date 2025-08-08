@@ -165,7 +165,7 @@ export class UltraFastHolderMonitor {
       
       console.log(chalk.red.bold(`\n⚡ INSTANT ANALYSIS (${result.rows.length} tokens with tech ≥180 missing holder scores)`));
       
-      const batch = result.rows.slice(0, 2); // Process only 2 at once to avoid rate limits
+      const batch = result.rows.slice(0, 3); // Process 3 at once (safe with 10 RPS limit)
       
       const promises = batch.map(async (token: any) => {
         console.log(chalk.yellow.bold(`  🎯 ${token.symbol}: Tech=${token.technical_score} | ${token.reason}`));

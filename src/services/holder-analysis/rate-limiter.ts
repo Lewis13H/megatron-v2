@@ -6,8 +6,8 @@ export class RateLimiter {
   private windowStart = Date.now();
   
   constructor(
-    private maxRequestsPerMinute: number = 300,
-    private maxRequestsPerSecond: number = 10
+    private maxRequestsPerMinute: number = 600, // Helius doesn't specify per minute, so 10*60
+    private maxRequestsPerSecond: number = 10  // Helius Developer plan: 10 RPS for DAS/Enhanced APIs
   ) {}
   
   async execute<T>(fn: () => Promise<T>, retries = 3): Promise<T> {
