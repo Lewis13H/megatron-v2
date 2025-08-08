@@ -406,9 +406,14 @@ export class OptimizedHolderAnalysisService {
       const holders = await this.fetchHoldersListOptimized(mint, bondingCurveAddress, analysisDepth.maxHolders);
       totalCredits += Math.ceil(holders.length / 1000);
 
+      // For instant analysis of high-tech tokens, analyze even with few holders
       if (holders.length < analysisDepth.minHolders) {
-        console.log(`Insufficient holders (${holders.length}), skipping analysis`);
-        return null;
+        // Only skip if it's not a high priority token with very high technical score
+        if (priority !== 'high' || holders.length < 3) {
+          console.log(`Insufficient holders (${holders.length}), skipping analysis`);
+          return null;
+        }
+        console.log(`⚠️ Low holder count (${holders.length}) but analyzing due to high priority`);
       }
 
       // Stage 2: Smart sampling for large holder lists
@@ -471,7 +476,7 @@ export class OptimizedHolderAnalysisService {
         return {
           maxHolders: 10000,
           sampleSize: 500,
-          minHolders: 10,
+          minHolders: 3,  // Reduced from 10 for instant analysis
           enrichmentDepth: 'full'
         };
       case 'medium':
@@ -767,21 +772,43 @@ export class OptimizedHolderAnalysisService {
   private calculateScore(metrics: any): any {
     let distributionScore = 0;
     
-    // Gini coefficient (40 points)
-    if (metrics.distribution.giniCoefficient < 0.3) distributionScore += 40;
-    else if (metrics.distribution.giniCoefficient < 0.5) distributionScore += 30;
-    else if (metrics.distribution.giniCoefficient < 0.7) distributionScore += 20;
-    else if (metrics.distribution.giniCoefficient < 0.8) distributionScore += 10;
-    
-    // Concentration (40 points)
-    if (metrics.distribution.top1Percent < 5) distributionScore += 40;
-    else if (metrics.distribution.top1Percent < 10) distributionScore += 30;
-    else if (metrics.distribution.top1Percent < 15) distributionScore += 20;
-    else if (metrics.distribution.top1Percent < 20) distributionScore += 10;
-    
-    // Holder count (31 points)
-    const holderPoints = Math.min(31, Math.floor(metrics.distribution.uniqueHolders / 10));
-    distributionScore += holderPoints;
+    // Special handling for very low holder counts
+    if (metrics.distribution.uniqueHolders < 10) {
+      // For tokens with very few holders, apply penalties but still give some score
+      const holderPenalty = Math.max(0.3, metrics.distribution.uniqueHolders / 10);
+      
+      // Gini coefficient (40 points) - reduced for low holders
+      if (metrics.distribution.giniCoefficient < 0.3) distributionScore += 40 * holderPenalty;
+      else if (metrics.distribution.giniCoefficient < 0.5) distributionScore += 30 * holderPenalty;
+      else if (metrics.distribution.giniCoefficient < 0.7) distributionScore += 20 * holderPenalty;
+      else if (metrics.distribution.giniCoefficient < 0.8) distributionScore += 10 * holderPenalty;
+      
+      // Concentration (40 points) - reduced for low holders
+      if (metrics.distribution.top1Percent < 5) distributionScore += 40 * holderPenalty;
+      else if (metrics.distribution.top1Percent < 10) distributionScore += 30 * holderPenalty;
+      else if (metrics.distribution.top1Percent < 15) distributionScore += 20 * holderPenalty;
+      else if (metrics.distribution.top1Percent < 20) distributionScore += 10 * holderPenalty;
+      
+      // Holder count (31 points) - heavily penalized
+      distributionScore += Math.min(31, Math.floor(metrics.distribution.uniqueHolders * 2)) * holderPenalty;
+    } else {
+      // Normal scoring for adequate holder counts
+      // Gini coefficient (40 points)
+      if (metrics.distribution.giniCoefficient < 0.3) distributionScore += 40;
+      else if (metrics.distribution.giniCoefficient < 0.5) distributionScore += 30;
+      else if (metrics.distribution.giniCoefficient < 0.7) distributionScore += 20;
+      else if (metrics.distribution.giniCoefficient < 0.8) distributionScore += 10;
+      
+      // Concentration (40 points)
+      if (metrics.distribution.top1Percent < 5) distributionScore += 40;
+      else if (metrics.distribution.top1Percent < 10) distributionScore += 30;
+      else if (metrics.distribution.top1Percent < 15) distributionScore += 20;
+      else if (metrics.distribution.top1Percent < 20) distributionScore += 10;
+      
+      // Holder count (31 points)
+      const holderPoints = Math.min(31, Math.floor(metrics.distribution.uniqueHolders / 10));
+      distributionScore += holderPoints;
+    }
 
     // Quality score (111 points)
     let qualityScore = 0;

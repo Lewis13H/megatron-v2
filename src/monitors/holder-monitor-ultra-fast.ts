@@ -95,7 +95,7 @@ export class UltraFastHolderMonitor {
     while (this.isRunning) {
       try {
         await this.processInstantAnalysisTokens();
-        await this.sleep(5000); // 5 seconds
+        await this.sleep(3000); // 3 seconds - more aggressive for instant analysis
       } catch (error) {
         console.error(chalk.red('Error in instant analysis loop:'), error);
         await this.sleep(5000);
@@ -165,7 +165,7 @@ export class UltraFastHolderMonitor {
       
       console.log(chalk.red.bold(`\n⚡ INSTANT ANALYSIS (${result.rows.length} tokens with tech ≥180 missing holder scores)`));
       
-      const batch = result.rows.slice(0, 3); // Process 3 at once (safe with 10 RPS limit)
+      const batch = result.rows.slice(0, 5); // Process 5 at once with rate limiting
       
       const promises = batch.map(async (token: any) => {
         console.log(chalk.yellow.bold(`  🎯 ${token.symbol}: Tech=${token.technical_score} | ${token.reason}`));
