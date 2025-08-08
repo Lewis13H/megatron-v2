@@ -109,7 +109,8 @@
       "Bash(PGPASSWORD=password123 psql:*)",
       "Bash(net stop:*)",
       "WebFetch(domain:api.tweetscout.io)",
-      "Bash(set PGPASSWORD=password123)"
+      "Bash(set PGPASSWORD=password123)",
+      "Bash(set \"PGPASSWORD=password123\")"
     ],
     "deny": []
   }
