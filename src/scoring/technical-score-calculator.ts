@@ -62,14 +62,8 @@ export class TechnicalScoreCalculator {
         throw new Error('Failed to calculate technical score');
       }
       
-      // Get detailed sell-off metrics
-      const selloffResult = await client.query(
-        'SELECT * FROM calculate_selloff_response_score($1::uuid)',
-        [poolId]
-      );
-      
       const row = result.rows[0];
-      const selloffData = selloffResult.rows[0] || {};
+      // Selloff data is now included in the main technical score function
       
       const score: TechnicalScoreResult = {
         totalScore: parseFloat(row.total_score),
@@ -81,11 +75,11 @@ export class TechnicalScoreCalculator {
         bondingCurveProgress: row.bonding_curve_progress ? parseFloat(row.bonding_curve_progress) : null,
         buySellRatio: row.buy_sell_ratio ? parseFloat(row.buy_sell_ratio) : null,
         isSelloffActive: row.is_selloff_active || false,
-        selloffDuration: selloffData.selloff_duration || null,
+        selloffDuration: row.selloff_duration || null,
         priceDrops: {
-          min5: selloffData.price_drop_5min || 0,
-          min15: selloffData.price_drop_15min || 0,
-          min30: selloffData.price_drop_30min || 0
+          min5: row.price_drop_5min || 0,
+          min15: row.price_drop_15min || 0,
+          min30: row.price_drop_30min || 0
         },
         calculatedAt: new Date()
       };

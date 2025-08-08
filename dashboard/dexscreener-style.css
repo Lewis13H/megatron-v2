@@ -398,6 +398,23 @@ body {
     letter-spacing: 0.5px;
     border-bottom: 1px solid #2a2a2a;
     white-space: nowrap;
+    position: relative;
+    transition: color 0.2s ease;
+}
+
+.token-table th:hover {
+    color: #ccc;
+}
+
+.token-table th .header-content {
+    display: inline-block;
+}
+
+.token-table th .sort-indicator {
+    display: inline-block;
+    margin-left: 4px;
+    color: #4CAF50;
+    font-size: 10px;
 }
 
 .token-table tbody tr {

@@ -19,6 +19,7 @@ import { SolanaEventParser } from "./utils/event-parser";
 import { parseSwapTransactionOutput } from "./utils/pump-fun-parsed-transaction";
 import pumpFunIdl from "./idls/pump_0.1.0.json";
 import { monitorService } from "../../database";
+import { scoreIntegration } from "./utils/score-integration";
 
 interface SubscribeRequest {
   accounts: { [key: string]: SubscribeRequestFilterAccounts };
@@ -66,6 +67,22 @@ const BATCH_TIMEOUT = 5000; // 5 seconds
 
 let batchTimer: NodeJS.Timeout | null = null;
 
+// Helper function to get mint address from token ID
+async function getMintFromTokenId(tokenId: string): Promise<string | null> {
+  const { getDbPool } = require("../../database");
+  const pool = getDbPool();
+  const client = await pool.connect();
+  try {
+    const result = await client.query(
+      'SELECT mint_address FROM tokens WHERE id = $1',
+      [tokenId]
+    );
+    return result.rows[0]?.mint_address || null;
+  } finally {
+    client.release();
+  }
+}
+
 async function flushBatch() {
   if (transactionBatch.length === 0) return;
   
@@ -80,6 +97,19 @@ async function flushBatch() {
   try {
     await monitorService.saveTransactionBatch(batch);
     console.log(`💾 Batch of ${batch.length} transactions saved`);
+    
+    // Calculate scores for significant transactions
+    for (const tx of batch) {
+      const solAmount = parseFloat(tx.sol_amount);
+      if (solAmount > 1) { // Only calculate for transactions > 1 SOL
+        // Get mint address from transaction metadata
+        const mintAddress = tx.metadata?.rawData?.parsedTxn?.mint || 
+                          (await getMintFromTokenId(tx.token_id));
+        if (mintAddress) {
+          await scoreIntegration.onTransaction(mintAddress, tx.type as 'buy' | 'sell', solAmount);
+        }
+      }
+    }
   } catch (error) {
     console.error(`❌ Failed to save batch:`, error);
   }

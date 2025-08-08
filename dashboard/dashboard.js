@@ -27,7 +27,7 @@ class Dashboard {
 
   async updateTokens() {
     try {
-      const url = `${this.apiUrl}/tokens?page=${this.currentPage}&limit=${this.tokensPerPage}`;
+      const url = `${this.apiUrl}/tokens?page=${this.currentPage}&limit=${this.tokensPerPage}&sortBy=${this.sortColumn}&sortDirection=${this.sortDirection}`;
       console.log('Fetching tokens from:', url);
       const response = await fetch(url);
       const data = await response.json();
@@ -389,28 +389,47 @@ class Dashboard {
   }
   
   setupSortHandlers() {
-    // Add click handlers to sortable columns
+    // Add click handlers to ALL sortable columns
     const headers = document.querySelectorAll('th');
     const sortableColumns = {
+      0: 'symbol',     // TOKEN column (sort by symbol)
+      1: 'price',      // PRICE
+      2: 'marketCap',  // MCAP
+      3: 'progress',   // PROGRESS
       4: 'total',      // Total score
       5: 'technical',  // Technical score
       6: 'holder',     // Holder score
-      7: 'social'      // Social score
+      7: 'social',     // Social score
+      8: 'age',        // AGE
+      9: 'txns',       // TXNS
+      10: 'holders',   // HOLDERS
+      11: 'volume',    // VOLUME
+      12: 'makers',    // MAKERS
+      13: 'liquidity'  // LIQUIDITY
     };
     
     Object.entries(sortableColumns).forEach(([index, column]) => {
       const header = headers[parseInt(index)];
       if (header) {
         header.style.cursor = 'pointer';
+        header.style.userSelect = 'none';
         header.title = 'Click to sort';
-        header.addEventListener('click', () => {
-          this.sortBy(column);
+        
+        // Create wrapper for header content if it doesn't exist
+        if (!header.querySelector('.header-content')) {
+          const content = header.innerHTML;
+          header.innerHTML = `<span class="header-content">${content}</span><span class="sort-indicator"></span>`;
+        }
+        
+        header.addEventListener('click', async () => {
+          console.log(`Sorting by column: ${column}`);
+          await this.sortBy(column);
           this.updateSortIndicators(parseInt(index));
         });
         
-        // Add initial sort indicator for total score
-        if (column === 'total') {
-          header.innerHTML = header.textContent + ' ▼';
+        // Add initial sort indicator for default sort column
+        if (column === this.sortColumn) {
+          this.updateSortIndicators(parseInt(index));
         }
       }
     });
@@ -420,17 +439,24 @@ class Dashboard {
     // Remove all sort indicators
     const headers = document.querySelectorAll('th');
     headers.forEach(header => {
-      header.innerHTML = header.textContent.replace(' ▲', '').replace(' ▼', '');
+      const indicator = header.querySelector('.sort-indicator');
+      if (indicator) {
+        indicator.textContent = '';
+      }
     });
     
     // Add indicator to current column
     const header = headers[columnIndex];
     if (header) {
-      header.innerHTML = header.textContent + (this.sortDirection === 'desc' ? ' ▼' : ' ▲');
+      const indicator = header.querySelector('.sort-indicator');
+      if (indicator) {
+        indicator.textContent = this.sortDirection === 'desc' ? ' ▼' : ' ▲';
+      }
     }
   }
   
-  sortBy(column) {
+  async sortBy(column) {
+    console.log(`sortBy called with column: ${column}`);
     // Toggle direction if same column
     if (this.sortColumn === column) {
       this.sortDirection = this.sortDirection === 'desc' ? 'asc' : 'desc';
@@ -439,24 +465,13 @@ class Dashboard {
       this.sortDirection = 'desc';
     }
     
-    // Sort all token lists
-    const sortFunction = (a, b) => {
-      let aVal = column === 'total' ? a.scores.total : a.scores[column];
-      let bVal = column === 'total' ? b.scores.total : b.scores[column];
-      
-      if (this.sortDirection === 'desc') {
-        return bVal - aVal;
-      } else {
-        return aVal - bVal;
-      }
-    };
+    console.log(`New sort: ${this.sortColumn} ${this.sortDirection}`);
     
-    this.allTokens.sort(sortFunction);
-    this.bondingTokens.sort(sortFunction);
-    this.graduatedTokens.sort(sortFunction);
+    // Reset to first page when sorting changes
+    this.currentPage = 1;
     
-    // Re-render
-    this.renderTokens();
+    // Fetch sorted data from server
+    await this.updateTokens();
   }
   
   setupTabHandlers() {

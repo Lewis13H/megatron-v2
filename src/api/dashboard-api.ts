@@ -33,7 +33,11 @@ router.get('/tokens', async (req, res) => {
     const limit = Math.min(requestedLimit, 100); // Max 100 per page
     const offset = (page - 1) * limit;
     
-    console.log(`Fetching page ${page} with ${limit} tokens (offset: ${offset})...`);
+    // Get sorting params
+    const sortBy = (req.query.sortBy as string) || 'created_at';
+    const sortDirection = (req.query.sortDirection as string)?.toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
+    
+    console.log(`Fetching page ${page} with ${limit} tokens (offset: ${offset}), sorted by ${sortBy} ${sortDirection}...`);
     
     // First get the latest SOL price
     const solPriceResult = await pool.query(`
@@ -44,54 +48,90 @@ router.get('/tokens', async (req, res) => {
     `);
     const solPriceUsd = solPriceResult.rows[0]?.price_usd || 165; // More realistic default
 
-    // Simple query to get tokens
+    // Map frontend column names to database columns
+    const sortColumnMap: {[key: string]: string} = {
+      'created_at': 'token_created_at',
+      'symbol': 'symbol',
+      'name': 'name',
+      'price': 'price_usd',
+      'marketCap': 'market_cap_usd',
+      'progress': 'bonding_curve_progress',
+      'total': 'total_score',
+      'technical': 'technical_score',
+      'holder': 'holder_score',
+      'social': 'social_score',
+      'age': 'age_seconds',
+      'txns': 'txns_24h',
+      'holders': 'holder_count',
+      'volume': 'volume_24h_sol',
+      'makers': 'makers_24h',
+      'liquidity': 'price_usd'  // Using price as proxy for liquidity for now
+    };
+    
+    const orderByColumn = sortColumnMap[sortBy] || 'token_created_at';
+    
+    // Simple query to get tokens with dynamic sorting
     const query = `
-      SELECT 
-        t.mint_address as address,
-        t.symbol,
-        t.name,
-        COALESCE(
-          t.metadata->'offChainMetadata'->>'image',
-          t.metadata->>'image',
-          t.metadata->>'imageUri',
-          t.metadata->>'image_uri'
-        ) as image_uri,
-        t.created_at as token_created_at,
-        t.platform,
-        COALESCE(p.latest_price_usd, p.initial_price_usd, 0) as price_usd,
-        COALESCE(p.latest_price, p.initial_price, 0) as price_sol,
-        0 as total_score,
-        0 as technical_score,
-        0 as market_cap_score,
-        0 as bonding_curve_score,
-        0 as trading_health_score,
-        0 as selloff_response_score,
-        0 as buy_sell_ratio,
-        false as is_selloff_active,
-        0 as holder_score,
-        0 as holder_distribution_score,
-        0 as holder_quality_score,
-        0 as holder_activity_score,
-        NULL as gini_coefficient,
-        0 as top_10_concentration,
-        0 as unique_holders,
-        0 as avg_wallet_age_days,
-        0 as bot_ratio,
-        0 as organic_growth_score,
-        0 as social_score,
-        0 as txns_24h,
-        0 as holder_count,
-        0 as makers_24h,
-        EXTRACT(epoch FROM (NOW() - t.created_at)) as age_seconds,
-        0 as volume_24h_sol,
-        p.bonding_curve_progress,
-        t.is_graduated,
-        COALESCE(p.latest_price_usd, p.initial_price_usd, 0) * 1000000000 as market_cap_usd
-      FROM tokens t
-      JOIN pools p ON t.id = p.token_id
-      WHERE t.symbol IS NOT NULL
-        AND p.status = 'active'
-      ORDER BY t.created_at DESC
+      WITH token_data AS (
+        SELECT 
+          t.id as token_id,
+          p.id as pool_id,
+          t.mint_address as address,
+          t.symbol,
+          t.name,
+          COALESCE(
+            t.metadata->'offChainMetadata'->>'image',
+            t.metadata->>'image',
+            t.metadata->>'imageUri',
+            t.metadata->>'image_uri'
+          ) as image_uri,
+          t.created_at as token_created_at,
+          t.platform,
+          COALESCE(p.latest_price_usd, p.initial_price_usd, 0) as price_usd,
+          COALESCE(p.latest_price, p.initial_price, 0) as price_sol,
+          ts.total_score,
+          ts.total_score as technical_score,
+          ts.market_cap_score,
+          ts.bonding_curve_score,
+          ts.trading_health_score,
+          ts.selloff_response_score,
+          ts.buy_sell_ratio,
+          ts.is_selloff_active,
+          COALESCE(hs.total_score, 0) as holder_score,
+          COALESCE(hs.distribution_score, 0) as holder_distribution_score,
+          COALESCE(hs.quality_score, 0) as holder_quality_score,
+          COALESCE(hs.activity_score, 0) as holder_activity_score,
+          NULL as gini_coefficient,
+          0 as top_10_concentration,
+          0 as unique_holders,
+          0 as avg_wallet_age_days,
+          0 as bot_ratio,
+          0 as organic_growth_score,
+          0 as social_score,
+          (SELECT COUNT(*) FROM transactions WHERE token_id = t.id AND block_time > NOW() - INTERVAL '24 hours') as txns_24h,
+          0 as holder_count,
+          0 as makers_24h,
+          EXTRACT(epoch FROM (NOW() - t.created_at)) as age_seconds,
+          (SELECT COALESCE(SUM(sol_amount), 0) FROM transactions WHERE token_id = t.id AND block_time > NOW() - INTERVAL '24 hours' AND type IN ('buy', 'sell')) as volume_24h_sol,
+          p.bonding_curve_progress,
+          t.is_graduated,
+          COALESCE(p.latest_price_usd, p.initial_price_usd, 0) * 1000000000 as market_cap_usd
+        FROM tokens t
+        JOIN pools p ON t.id = p.token_id
+        LEFT JOIN LATERAL (
+          SELECT * FROM calculate_technical_score(t.id, p.id)
+        ) ts ON true
+        LEFT JOIN LATERAL (
+          SELECT * FROM holder_scores_v2
+          WHERE token_id = t.id
+          ORDER BY score_time DESC
+          LIMIT 1
+        ) hs ON true
+        WHERE t.symbol IS NOT NULL
+          AND p.status = 'active'
+      )
+      SELECT * FROM token_data
+      ORDER BY ${orderByColumn} ${sortDirection} NULLS LAST
       LIMIT $1 OFFSET $2
     `;
 
@@ -185,6 +225,72 @@ router.get('/tokens', async (req, res) => {
 
   } catch (error) {
     console.error('Error fetching tokens:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// Get recent transactions
+router.get('/transactions', async (req, res) => {
+  try {
+    const pool = getDbPool();
+    const limit = parseInt(req.query.limit as string) || 100;
+    const tokenId = req.query.tokenId as string;
+    
+    let query = `
+      SELECT 
+        tx.signature,
+        tx.type,
+        tx.block_time,
+        tx.user_address,
+        tx.sol_amount,
+        tx.token_amount,
+        tx.price_per_token,
+        t.symbol,
+        t.name,
+        t.mint_address,
+        p.bonding_curve_progress
+      FROM transactions tx
+      JOIN tokens t ON tx.token_id = t.id
+      JOIN pools p ON tx.pool_id = p.id
+    `;
+    
+    const params: any[] = [];
+    if (tokenId) {
+      query += ' WHERE tx.token_id = $1';
+      params.push(tokenId);
+    }
+    
+    query += ` ORDER BY tx.block_time DESC LIMIT $${params.length + 1}`;
+    params.push(limit);
+    
+    const result = await pool.query(query, params);
+    
+    res.json({
+      success: true,
+      transactions: result.rows.map(tx => ({
+        signature: tx.signature,
+        type: tx.type,
+        blockTime: tx.block_time,
+        userAddress: tx.user_address,
+        solAmount: parseFloat(tx.sol_amount),
+        tokenAmount: parseFloat(tx.token_amount),
+        pricePerToken: parseFloat(tx.price_per_token),
+        token: {
+          symbol: tx.symbol,
+          name: tx.name,
+          mintAddress: tx.mint_address
+        },
+        bondingCurveProgress: parseFloat(tx.bonding_curve_progress)
+      })),
+      count: result.rows.length,
+      timestamp: new Date()
+    });
+    
+  } catch (error) {
+    console.error('Error fetching transactions:', error);
     res.status(500).json({
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error'
