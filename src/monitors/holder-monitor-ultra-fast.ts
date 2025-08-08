@@ -165,7 +165,7 @@ export class UltraFastHolderMonitor {
       
       console.log(chalk.red.bold(`\n⚡ INSTANT ANALYSIS (${result.rows.length} tokens with tech ≥180 missing holder scores)`));
       
-      const batch = result.rows.slice(0, 5); // Process up to 5 at once
+      const batch = result.rows.slice(0, 2); // Process only 2 at once to avoid rate limits
       
       const promises = batch.map(async (token: any) => {
         console.log(chalk.yellow.bold(`  🎯 ${token.symbol}: Tech=${token.technical_score} | ${token.reason}`));
@@ -372,7 +372,7 @@ export class UltraFastHolderMonitor {
         JOIN pools p ON p.token_id = t.id
         WHERE 
           t.platform = 'pumpfun'
-          AND p.is_active = true
+          AND p.status = 'active'
           AND p.bonding_curve_progress BETWEEN 5 AND 84
           AND t.analysis_tier IN ('ultra_critical', 'critical', 'high_priority')
         ORDER BY 
@@ -418,8 +418,8 @@ export class UltraFastHolderMonitor {
   private async getStandardTokens(): Promise<Token[]> {
     try {
       const result = await this.dbPool.query(
-        'SELECT * FROM get_tokens_for_holder_analysis_v3($1)',
-        [this.config.standardBatchSize]
+        'SELECT * FROM get_tokens_for_analysis_simple()',
+        []
       );
       
       return result.rows.map((row: any) => ({
@@ -427,14 +427,14 @@ export class UltraFastHolderMonitor {
         mint_address: row.mint_address,
         symbol: row.symbol,
         bonding_curve_progress: parseFloat(row.bonding_curve_progress),
-        technical_score: parseFloat(row.technical_score || 0),
-        holder_score: parseFloat(row.holder_score || 0),
-        combined_score: parseFloat(row.combined_score || 0),
-        last_analyzed: row.last_analyzed,
-        priority_score: row.priority_score,
-        analysis_tier: row.analysis_tier,
-        recommended_frequency: row.recommended_frequency,
-        reason: row.reason
+        technical_score: 0,
+        holder_score: 0,
+        combined_score: 0,
+        last_analyzed: null,
+        priority_score: row.priority,
+        analysis_tier: row.tier,
+        recommended_frequency: row.frequency,
+        reason: 'Standard analysis'
       }));
       
     } catch (error) {

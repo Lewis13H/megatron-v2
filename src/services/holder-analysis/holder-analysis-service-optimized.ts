@@ -4,6 +4,7 @@ import { getDbPool } from '../../database/connection';
 import { MetricsCalculator } from './metrics-calculator';
 import { PatternDetector } from './pattern-detector';
 import { CreditTracker } from './credit-tracker';
+import { RateLimiter } from './rate-limiter';
 
 interface Holder {
   address: string;
@@ -350,11 +351,12 @@ export class OptimizedHolderAnalysisService {
   private creditTracker: CreditTracker;
   private metricsCalculator: MetricsCalculator;
   private patternDetector: PatternDetector;
+  private rateLimiter: RateLimiter;
   private dbPool: any;
   
-  // Parallel processing configuration
-  private readonly PARALLEL_BATCH_SIZE = 50;
-  private readonly MAX_CONCURRENT_REQUESTS = 10;
+  // Parallel processing configuration (reduced for rate limiting)
+  private readonly PARALLEL_BATCH_SIZE = 10; // Further reduced
+  private readonly MAX_CONCURRENT_REQUESTS = 2; // Further reduced
   
   // Known system addresses to exclude
   private readonly SYSTEM_ADDRESSES = new Set([
@@ -378,6 +380,7 @@ export class OptimizedHolderAnalysisService {
     this.creditTracker = CreditTracker.getInstance(10_000_000);
     this.metricsCalculator = new MetricsCalculator();
     this.patternDetector = new PatternDetector();
+    this.rateLimiter = new RateLimiter(300, 5); // 300 per minute, 5 per second
     
     // Schedule periodic cache cleanup
     setInterval(() => this.cache.cleanup(), 600000); // Every 10 minutes
@@ -531,11 +534,14 @@ export class OptimizedHolderAnalysisService {
 
     while (holders.length < maxHolders) {
       try {
-        const response = await this.helius.rpc.getTokenAccounts({
-          mint,
-          limit,
-          page
-        });
+        // Use rate limiter with retry logic
+        const response = await this.rateLimiter.execute(async () => 
+          this.helius.rpc.getTokenAccounts({
+            mint,
+            limit,
+            page
+          })
+        );
 
         if (!response?.token_accounts || response.token_accounts.length === 0) {
           break;
@@ -586,7 +592,7 @@ export class OptimizedHolderAnalysisService {
     // Process chunks in parallel with concurrency limit
     for (const chunk of chunks) {
       const chunkPromises = chunk.map((wallet, index) => 
-        this.enrichSingleWalletOptimized(wallet, index * 10)
+        this.enrichSingleWalletOptimized(wallet, index * 100) // Increased delay to 100ms between requests
       );
       
       const chunkResults = await Promise.allSettled(chunkPromises);
@@ -624,10 +630,14 @@ export class OptimizedHolderAnalysisService {
     try {
       const pubkey = new PublicKey(address);
       
-      // Fetch only essential data
+      // Fetch only essential data with rate limiting
       const [signatures, balance] = await Promise.all([
-        this.connection.getSignaturesForAddress(pubkey, { limit: 50 }), // Reduced from 100
-        this.connection.getBalance(pubkey)
+        this.rateLimiter.execute(() => 
+          this.connection.getSignaturesForAddress(pubkey, { limit: 50 })
+        ),
+        this.rateLimiter.execute(() => 
+          this.connection.getBalance(pubkey)
+        )
       ]);
 
       if (!signatures || signatures.length === 0) {
