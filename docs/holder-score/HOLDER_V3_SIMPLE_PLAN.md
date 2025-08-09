@@ -6,18 +6,7 @@ Instead of a complete rewrite, we'll make targeted improvements that deliver imm
 
 ## Phase 1: Critical Fixes (Days 1-3)
 
-### 1.1 Enable Credit Tracking (Day 1)
-**Problem**: Credit tracking is completely disabled
-**Solution**: Simple fix - uncomment and test
-
-```typescript
-// holder-analysis-service.ts - Line 262, 355
-// BEFORE: // this.creditTracker.increment(1, 'getTokenAccounts');
-// AFTER:
-this.creditTracker.increment(1, 'getTokenAccounts');
-```
-
-### 1.2 Replace Hardcoded Scoring (Day 2)
+### 1.1 Replace Hardcoded Scoring (Day 1)
 **Problem**: All thresholds are hardcoded
 **Solution**: Configuration file with environment-based overrides
 
@@ -53,7 +42,7 @@ private calculateScore(metrics: any): any {
 }
 ```
 
-### 1.3 Add Simple Event Triggers (Day 3)
+### 1.2 Add Simple Event Triggers (Day 2-3)
 **Problem**: Only polls every 60 seconds
 **Solution**: Hook into existing transaction monitor
 
@@ -295,7 +284,6 @@ private generateSmartAlerts(metrics: any, score: any): any[] {
 ## Implementation Checklist
 
 ### Week 1 Priority
-- [ ] Enable credit tracking (30 min)
 - [ ] Create scoring config file (2 hours)
 - [ ] Test with real tokens (1 hour)
 - [ ] Add transaction event hooks (3 hours)
@@ -313,10 +301,10 @@ private generateSmartAlerts(metrics: any, score: any): any[] {
 ## Success Metrics
 
 ### Immediate Wins (Week 1)
-- Credit usage tracking active
 - 50% reduction in stale analyses
 - 2x faster response to large transactions
 - Configurable scoring thresholds
+- Using optimized service with tiered cache
 
 ### Medium Term (Week 2)
 - 70% cache hit rate (up from 30%)

@@ -19,6 +19,7 @@ import { bnLayoutFormatter } from "./utils/bn-layout-formatter";
 import raydiumLaunchpadIdl from "./idls/raydium_launchpad.json";
 import { monitorService } from "../../database";
 import { PoolData } from "../../database/types";
+import { grpcPool } from '../../grpc';  // ADDED: Import pool
 
 interface SubscribeRequest {
   accounts: { [key: string]: SubscribeRequestFilterAccounts };
@@ -106,16 +107,24 @@ async function flushBatch() {
   }
 }
 
-async function handleStream(client: Client, args: SubscribeRequest) {
-  console.log("🚀 Starting Comprehensive Raydium Launchpad Transaction Monitor...")
+async function handleStream(client: Client, args: SubscribeRequest, monitorId: string) {
+  console.log("🚀 Starting Comprehensive Raydium Launchpad Transaction Monitor (Pooled)...")
   const stream = await client.subscribe();
+  
+  // ADDED: Register stream with the pool for proper cleanup
+  (grpcPool as any).setStream(monitorId, stream);
 
   // Create error/end handler
   const streamClosed = new Promise<void>((resolve, reject) => {
-    stream.on("error", (error) => {
-      console.log("ERROR", error);
-      reject(error);
-      stream.end();
+    stream.on("error", (error: any) => {
+      // UPDATED: Handle cancellation errors gracefully
+      if (error.code === 1 || error.message?.includes('Cancelled')) {
+        console.log("✅ Stream cancelled gracefully");
+        resolve();
+      } else {
+        console.log("ERROR", error);
+        reject(error);
+      }
     });
     stream.on("end", () => {
       resolve();
@@ -543,49 +552,86 @@ ${parsedTx.events.map(evt => `  - ${evt.name || 'Event'}`).join('\n')}` : ''}
   }
 }
 
-async function subscribeCommand(client: Client, args: SubscribeRequest) {
+async function subscribeCommand(client: Client, args: SubscribeRequest, monitorId: string) {
+  console.log("Raydium Launchpad Transaction Monitor (Pooled)")
+  console.log("====================================================");
+  console.log("Program ID:", RAYDIUM_LAUNCHPAD_PROGRAM_ID.toBase58());
+  console.log("Features: All transaction types (buys, sells, liquidity)");
+  console.log("Using gRPC Connection Pool with proper stream cleanup");
+  console.log("Monitoring all transactions...\n");
+  
   while (true) {
     try {
-      await handleStream(client, args);
+      await handleStream(client, args, monitorId);
     } catch (error) {
       console.error("Stream error, restarting in 1 second...", error);
+      // ADDED: Release connection on error
+      await grpcPool.releaseConnection(monitorId);
       await new Promise((resolve) => setTimeout(resolve, 1000));
     }
   }
 }
 
-const client = new Client(
-  process.env.GRPC_URL!,
-  process.env.X_TOKEN!,
-  undefined
-);
+// CHANGED: Use pool instead of creating new client
+const MONITOR_ID = 'raydium-launchpad-transaction-monitor';
 
-const req: SubscribeRequest = {
-  accounts: {},
-  slots: {},
-  transactions: {
-    Raydium_Launchpad: {
-      vote: false,
-      failed: false,
-      signature: undefined,
-      accountInclude: [RAYDIUM_LAUNCHPAD_PROGRAM_ID.toBase58()],
-      accountExclude: [],
-      accountRequired: [],
+// ADDED: Function to get client from pool
+async function getPooledClient(): Promise<Client> {
+  return await grpcPool.getConnection(MONITOR_ID);
+}
+
+// ADDED: Graceful shutdown handler
+async function handleShutdown() {
+  console.log('\n[Monitor] Shutting down gracefully...');
+  // Flush any pending transactions
+  await flushBatch();
+  await grpcPool.releaseConnection(MONITOR_ID);
+  process.exit(0);
+}
+
+// Register shutdown handlers
+process.on('SIGINT', handleShutdown);
+process.on('SIGTERM', handleShutdown);
+
+// ADDED: Main async function to use pool
+async function main() {
+  const req: SubscribeRequest = {
+    accounts: {},
+    slots: {},
+    transactions: {
+      Raydium_Launchpad: {
+        vote: false,
+        failed: false,
+        signature: undefined,
+        accountInclude: [RAYDIUM_LAUNCHPAD_PROGRAM_ID.toBase58()],
+        accountExclude: [],
+        accountRequired: [],
+      },
     },
-  },
-  transactionsStatus: {},
-  entry: {},
-  blocks: {},
-  blocksMeta: {},
-  accountsDataSlice: [],
-  ping: undefined,
-  commitment: CommitmentLevel.CONFIRMED,
-};
+    transactionsStatus: {},
+    entry: {},
+    blocks: {},
+    blocksMeta: {},
+    accountsDataSlice: [],
+    ping: undefined,
+    commitment: CommitmentLevel.CONFIRMED,
+  };
+
+  // CHANGED: Get client from pool instead of creating new one
+  const client = await getPooledClient();
+  
+  // Run the subscription
+  await subscribeCommand(client, req, MONITOR_ID);
+}
 
 // Start monitoring
-console.log("🔍 Starting Raydium Launchpad Transaction Monitor");
-console.log(`📡 Connected to: ${process.env.GRPC_URL}`);
+console.log("🔍 Starting Raydium Launchpad Transaction Monitor (Pooled)");
+console.log(`📡 Connected via gRPC Pool`);
 console.log(`🎯 Program ID: ${RAYDIUM_LAUNCHPAD_PROGRAM_ID.toBase58()}`);
 console.log("📊 Monitoring: ALL transaction types\n");
 
-subscribeCommand(client, req);
+// CHANGED: Call main() instead of subscribeCommand directly
+main().catch(error => {
+  console.error('Monitor failed:', error);
+  process.exit(1);
+});
