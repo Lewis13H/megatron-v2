@@ -107,7 +107,7 @@ class TieredHolderCache {
       
       for (const row of result.rows) {
         const walletData = this.rowToWalletData(row);
-        this.permanent.set(row.wallet_address, {
+        this.tiers.permanent.set(row.wallet_address, {
           data: walletData,
           timestamp: Date.now()
         });
